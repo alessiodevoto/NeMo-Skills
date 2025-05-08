@@ -66,34 +66,46 @@ from nemo_skills.prompt.utils import get_prompt
 
 N_CALIBRATION_SAMPLES = 4096
 NEW_DATASET = 'darragh/calibrate_openmathreasoning'
-SPLITS_TO_USE = ['cot', 'tir']  # Only these splits
 prompt_template = get_prompt('generic/math', 'qwen-instruct')
 
-# Load each split and combine them
-datasets = []
-for split in SPLITS_TO_USE:
-    ds_split = load_dataset("nvidia/OpenMathReasoning", "default", split=split, streaming=True)
-    datasets.append(ds_split)
+# Load all splits (default splits are 'cot', 'tir', 'genselect')
+all_splits = load_dataset("nvidia/OpenMathReasoning", streaming=True)
+datasets = [all_splits[split] for split in all_splits.keys()]  # Get all splits
+
+# Concatenate into a single IterableDataset
 ds = concatenate_datasets(datasets)
 
-# Shuffle and select N samples
-ds = ds.shuffle(seed=42, buffer_size=10000)  # Add buffer_size for shuffling
-ds = list(islice(ds, N_CALIBRATION_SAMPLES))  # Convert to list with first N samples
+# Shuffle and take first N samples
+ds = ds.shuffle(seed=42, buffer_size=10000)
+ds_samples = list(islice(ds, N_CALIBRATION_SAMPLES))
 
+# Add the problems and answer into the prompt template
 texts = []
-for sample in ds:
+for sample in ds_samples:
     sample_dict = {k:v for k,v in sample.items() if k in ['problem', 'generation']}
     text = prompt_template.fill(sample_dict,
                         continue_prefix_generation=True,
                         prefix_generation_to_response=True)
     texts.append({"text": text})
 
-# Push to the
+# Push to the hub
 calib_ds = Dataset.from_list(texts)
 calib_ds.push_to_hub(NEW_DATASET)
 ```
 
-...
+The above calibration dataset is created at
+
+Now lets start calibration. !!IN WORK!!
+```
+python quantize.py --model_dir $BASE_MODEL \
+                                   --dtype float16 \
+                                   --qformat fp8 \
+                                   --output_dir $TMP_FP8_MODEL \
+                                   --calib_size 4636 \
+                                   --calib_dataset $CALIB_DATASET \
+                                   --batch_size 4 \
+                                   --tp_size 8
+```
 
 
 #### Optionally add speculative decoding
