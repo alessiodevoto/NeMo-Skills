@@ -93,7 +93,7 @@ calib_ds = Dataset.from_list(texts)
 calib_ds.push_to_hub(NEW_DATASET)
 ```
 
-The above calibration dataset is created at
+The above calibration dataset is created in the hub, for example [here](https://huggingface.co/datasets/darragh/calibrate_openmathreasoning).
 
 Now lets start calibration. !!IN WORK!!
 ```
