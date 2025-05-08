@@ -39,7 +39,7 @@ For this demonstration we will use FP8 quantisation, you can see the TensorRT-LL
 
 ### Download weights and dataset
 
-On command line, generate a huggingface key to download the weights. Make sure the key has write access so you can host the huggingface calibration dataset.
+On command line, generate a huggingface key to download the weights.
 ```
 # Export your huggingface key to an environment variable
 export HF_TOKEN=hf_Mt...
@@ -60,51 +60,89 @@ huggingface-cli download nvidia/OpenMathReasoning --repo-type dataset
 
 In a python script or Jupyter notebook, generate the calibrarion dataset.
 ```
-from datasets import load_dataset, concatenate_datasets, Dataset
+from datasets import load_dataset, concatenate_datasets, DatasetDict, Dataset
+
 from itertools import islice
 from nemo_skills.prompt.utils import get_prompt
+import os
 
 N_CALIBRATION_SAMPLES = 4096
-NEW_DATASET = 'darragh/calibrate_openmathreasoning'
+LOCAL_DATASET_PATH = './calibrate_openmathreasoning'
 prompt_template = get_prompt('generic/math', 'qwen-instruct')
 
-# Load all splits (default splits are 'cot', 'tir', 'genselect')
+# Load and process dataset
 all_splits = load_dataset("nvidia/OpenMathReasoning", streaming=True)
-datasets = [all_splits[split] for split in all_splits.keys()]  # Get all splits
-
-# Concatenate into a single IterableDataset
+datasets = [all_splits[split] for split in all_splits.keys()]
 ds = concatenate_datasets(datasets)
-
-# Shuffle and take first N samples
 ds = ds.shuffle(seed=42, buffer_size=10000)
 ds_samples = list(islice(ds, N_CALIBRATION_SAMPLES))
 
-# Add the problems and answer into the prompt template
+# Create a simple list of dictionaries with just the "text" field
 texts = []
 for sample in ds_samples:
     sample_dict = {k:v for k,v in sample.items() if k in ['problem', 'generation']}
     text = prompt_template.fill(sample_dict,
                         continue_prefix_generation=True,
                         prefix_generation_to_response=True)
-    texts.append({"text": text})
+    texts.append(text)  # Just store the text strings directly
 
-# Push to the hub
-calib_ds = Dataset.from_list(texts)
-calib_ds.push_to_hub(NEW_DATASET)
+# Create a minimal dataset with just the text column
+calib_ds = Dataset.from_dict({"text": texts})  # Explicitly create a dict with "text" column
+
+# Save in the correct format
+os.makedirs(LOCAL_DATASET_PATH, exist_ok=True)
+
+# Save the dataset
+calib_ds.to_parquet(f"{LOCAL_DATASET_PATH}/data.parquet")
 ```
 
-The above calibration dataset is created in the hub, for example [here](https://huggingface.co/datasets/darragh/calibrate_openmathreasoning).
+Now that our dataset is saved, let start calibration.
 
-Now lets start calibration. !!IN WORK!!
+Now lets start quantisation and calibration.
+We clone `TensorRT-LLM` to use the helper scripts in model preparation.
+We use a tensor parallelism setting of `--tp_size 2`, as we have two gpu case in our environment, feel free to
+
 ```
-python quantize.py --model_dir $BASE_MODEL \
+git clone https://github.com/NVIDIA/TensorRT-LLM.git
+cd TensorRT-LLM/examples/quantization/
+
+python quantize.py --model_dir ../../../OpenMath-Nemotron-14B-Kaggle \
                                    --dtype float16 \
                                    --qformat fp8 \
-                                   --output_dir $TMP_FP8_MODEL \
-                                   --calib_size 4636 \
-                                   --calib_dataset $CALIB_DATASET \
+                                   --output_dir ../../../OpenMath-Nemotron-14B-Kaggle-fp8-ckpt \
+                                   --calib_size 4096 \
+                                   --calib_dataset ../../../calibrate_openmathreasoning \
                                    --batch_size 4 \
-                                   --tp_size 8
+                                   --tp_size 2
+cd ../../../
+```
+
+Now we have a fp8 quantised checkpoint, so we can build our engine.
+```
+trtllm-build --checkpoint_dir $OpenMath-Nemotron-14B-Kaggle-fp8-ckpt \
+    --output_dir $FP16_MODEL \
+    --gemm_plugin  auto \
+    --use_paged_context_fmha=enable \
+    --max_batch_size 32 \
+    --max_seq_len 24000 \
+    --max_input_len 22000 \
+    --max_num_tokens 22000 \
+    --max_beam_width 1 \
+    --kv_cache_type paged
+```
+Note, there is an open issue in using fp8 kv cache for this model so we do not use this.
+
+```
+trtllm-build --checkpoint_dir $TMP_FP8_MODEL \
+    --output_dir $FP16_MODEL \
+    --gemm_plugin  auto \
+    --use_paged_context_fmha=enable \
+    --max_batch_size 32 \
+    --max_seq_len 49152 \
+    --max_input_len 24576 \
+    --max_num_tokens 1024 \
+    --max_beam_width 1 \
+    --kv_cache_type paged
 ```
 
 
