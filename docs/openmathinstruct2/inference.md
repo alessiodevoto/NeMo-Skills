@@ -117,10 +117,10 @@ python quantize.py --model_dir ../../../OpenMath-Nemotron-14B-Kaggle \
 cd ../../../
 ```
 
-Now we have a fp8 quantised checkpoint, so we can build our engine.
+Now we have a fp8 quantised checkpoint, so we can build our engine. Note, there is an open issue in using fp8 kv cache for this model so we do not use this. If you do not use ReDrafter, set `--max_num_tokens 1000`. This is related to the chunked context is incompatible currently with ReDrafter/Medusa.
 ```
-trtllm-build --checkpoint_dir $OpenMath-Nemotron-14B-Kaggle-fp8-ckpt \
-    --output_dir $FP16_MODEL \
+trtllm-build --checkpoint_dir OpenMath-Nemotron-14B-Kaggle-fp8-ckpt \
+    --output_dir OpenMath-Nemotron-14B-Kaggle-fp8-trtllm \
     --gemm_plugin  auto \
     --use_paged_context_fmha=enable \
     --max_batch_size 32 \
@@ -130,20 +130,8 @@ trtllm-build --checkpoint_dir $OpenMath-Nemotron-14B-Kaggle-fp8-ckpt \
     --max_beam_width 1 \
     --kv_cache_type paged
 ```
-Note, there is an open issue in using fp8 kv cache for this model so we do not use this.
 
-```
-trtllm-build --checkpoint_dir $TMP_FP8_MODEL \
-    --output_dir $FP16_MODEL \
-    --gemm_plugin  auto \
-    --use_paged_context_fmha=enable \
-    --max_batch_size 32 \
-    --max_seq_len 49152 \
-    --max_input_len 24576 \
-    --max_num_tokens 1024 \
-    --max_beam_width 1 \
-    --kv_cache_type paged
-```
+Now your engine is ready to be served.
 
 
 #### Optionally add speculative decoding
