@@ -142,29 +142,48 @@ Planned work includes:
 - Attaching weights to an FP8 quantized checkpoint
 
 
-## 🏗️ Launch servers (Work in Progress)
+## 🏗️ Launching Servers (Work in Progress)
 
-!TODO - PR Flask import
-!TODO - Install a fixed version of TRTLLM
+OpenMathReasoning is a tool-instruction reasoning model that combines an LLM with a code sandbox to answer questions. The system works as follows:
 
+1. The LLM generates Python code wrapped in `<tool_call>` and `</tool_call>` tokens
+2. The code is extracted and executed in the sandbox
+3. The sandbox returns results or error traces
+4. The output is fed back to the LLM for continued generation
+
+An example below,
+```Therefore, b = k - 7 = 21 or 49. So, same result. Therefore, sum is 70.\n\nAlternatively, maybe I can write a small program to check for all bases b > 9, compute 9b + 7 and b + 7, check if the latter divides the former, and collect all such bases. Then sum them. Let\'s do that to verify.\n\nHere\'s a Python code to perform the check:\n\n<tool_call>\n# Initialize a list to store valid bases\nvalid_bases = []\n\n# Check bases from 10 upwards\nfor b in range(10, 10000):  # Arbitrary large upper limit\n    num1 = 9 * b + 7\n    num2 = b + 7\n    if num1 % num2 == 0:\n        valid_bases.append(b)\n        print(f"Found base: {b}")\n\n# Sum the valid bases\nsum_bases = sum(valid_bases)\nprint(f"Sum: {sum_bases}")\n\n# If sum is over 1000, take modulo 1000\nif sum_bases > 1000:\n    result = sum_bases % 1000\nelse:\n    result = sum_bases\n\nprint(f"Final Result: {result}")\n</tool_call>\n```output\nFound base: 21\nFound base: 49\nSum: 70\nFinal Result: 70\n```\nThe code confirms that the valid bases are 21 and 49, summing to 70.
 ```
-cd /mount/data/pkgs/aimo2/v01/
-mpirun --allow-run-as-root -n 2 ns start_server --model=./OpenMath-Nemotron-14B-Kaggle-fp8-trtllm  --server_gpus=2 \
-    --server_type trtllm --server_args "--kv_cache_free_gpu_memory_fraction=0.92 --max_batch_size 12" --with_sandbox
-
-mpirun --allow-run-as-root -n 2 python -m nemo_skills.inference.server.serve_trt \
-    --model_path ./OpenMath-Nemotron-14B-Kaggle-fp8-trtllm  --port 5000 --kv_cache_free_gpu_memory_fraction=0.92 --max_batch_size 12
-```
-
-If you run into problems and need to restart the server, you can kill existing `mpirun` processes with `pkill -9 -f mpirun`.
 
 ### Code execution server
 
-...
+To start the code sandbox simply run the below in a new terminal. It should run in non blocking mode.
+```
+python -m nemo_skills.code_execution.local_sandbox.local_sandbox_server &
+```
 
 ### LLM server
 
-...
+!TODO - Install a fixed version of TRTLLM
+
+As our instance has two servers we will use mpirun to launch the server and allocate 0.92 of the GPU memory.
+```
+mpirun --allow-run-as-root -n 2 python -m nemo_skills.inference.server.serve_trt \
+    --model_path ./OpenMath-Nemotron-14B-Kaggle-fp8-trtllm  --port 5000 --kv_cache_free_gpu_memory_fraction=0.92 --max_batch_size 12
+```
+This will take a couple of minutes to start while your model loads, you should see logs finishing with the message, `INFO:     Uvicorn running on http://0.0.0.0:5000 ...`. The port and host can be seen in this message. Default local host is `0.0.0.0` and port specified above is `5000`.
+
+If you run into problems and need to restart the server, you can kill existing `mpirun` processes with `pkill -9 -f mpirun`.
+
+
+
+```
+# Backup commands - delete later
+cd /mount/data/pkgs/aimo2/v01/
+pip install flask ipython # push to main pending
+mpirun --allow-run-as-root -n 2 ns start_server --model=./OpenMath-Nemotron-14B-Kaggle-fp8-trtllm  --server_gpus=2 \
+    --server_type trtllm --server_args "--kv_cache_free_gpu_memory_fraction=0.92 --max_batch_size 12" --with_sandbox
+```
 
 ### Async inference
 
