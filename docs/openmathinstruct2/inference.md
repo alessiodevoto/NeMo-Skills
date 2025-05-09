@@ -1,20 +1,22 @@
-# Inference engine
+# Inference Engine
 
-Here we demonstrate how to create a [NeMo-Skills](https://nvidia.github.io/NeMo-Skills/) inference engine. An inderence engine can be used to answer new unseen Math problems and can be hosted within a docker container or loacally. The example shall demonstrate a server in [TensorRT-LLM](https://github.com/NVIDIA/TensorRT-LLM), however the same could be set up in any of the [NeMo](https://github.com/NVIDIA/NeMo), [vLLM](https://github.com/vllm-project/vllm) and [sglang](https://github.com/sgl-project/sglang) servers.
+This section demonstrates how to create a [NeMo-Skills](https://nvidia.github.io/NeMo-Skills/) inference engine for answering unseen math problems. The engine can be hosted locally or in a Docker container. While we show a [TensorRT-LLM](https://github.com/NVIDIA/TensorRT-LLM) server example, similar setups work with [NeMo](https://github.com/NVIDIA/NeMo), [vLLM](https://github.com/vllm-project/vllm), or [sglang](https://github.com/sgl-project/sglang) servers.
 
-Add architecture pic...
-![Alt text](../figs/inference_engine.png)
+![Inference Architecture](../figs/inference_engine.png)
 
-## TensorRT-LLM installation
+## TensorRT-LLM Setup
 
-For the inference, pretrained models were converted to TensorRT engines using TensorRT-LLM. TensorRT’s inflight batching boosts throughput by dynamically grouping inference requests, releasing each sample as soon as it completes—reducing latency and optimizing GPU utilization.
+We use TensorRT-LLM to convert pretrained models into TensorRT engines, leveraging inflight batching for improved throughput and latency.
 
-Detailed installation instuctions can be found [here](https://github.com/NVIDIA/TensorRT-LLM?tab=readme-ov-file#getting-started) and do note that if pytorch is in your environment it must be built with C++11 ABI on (see the installation [known limitations](https://nvidia.github.io/TensorRT-LLM/installation/linux.html)).
+### Installation
 
-For our example, we start with a `nvidia/cuda:12.8.1-devel-ubuntu24.04` container and install using the below (reference [here](https://github.com/nv-guomingz/TensorRT-LLM/blob/v0.14.0/docs/source/installation/linux.md#installing-on-linux)),
+1. Start from `nvidia/cuda:12.8.1-devel-ubuntu24.04` container
+2. Follow the [installation guide](https://github.com/NVIDIA/TensorRT-LLM?tab=readme-ov-file#getting-started)
+
+Note: If using PyTorch, ensure it's built with C++11 ABI enabled (see [known limitations](https://github.com/nv-guomingz/TensorRT-LLM/blob/v0.14.0/docs/source/installation/linux.md#installing-on-linux)),
 ```
 # Install prerequisites
-apt-get update && apt-get -y install python3.10 python3-pip openmpi-bin libopenmpi-dev git git-lfs
+apt-get update && apt-get -y install python3.10 python3-pip openmpi-bin libopenmpi-dev git git-lfs vim
 
 # Install tensorrt_llm
 pip3 install tensorrt_llm -U --pre --extra-index-url https://pypi.nvidia.com
@@ -60,39 +62,35 @@ huggingface-cli download nvidia/OpenMathReasoning --repo-type dataset
 
 In a python script or Jupyter notebook, generate the calibrarion dataset.
 ```
-from datasets import load_dataset, concatenate_datasets, DatasetDict, Dataset
-
+import os
+from datasets import load_dataset, Dataset
 from itertools import islice
 from nemo_skills.prompt.utils import get_prompt
-import os
 
 N_CALIBRATION_SAMPLES = 4096
 LOCAL_DATASET_PATH = './calibrate_openmathreasoning'
 prompt_template = get_prompt('generic/math', 'qwen-instruct')
 
-# Load and process dataset
-all_splits = load_dataset("nvidia/OpenMathReasoning", streaming=True)
-datasets = [all_splits[split] for split in all_splits.keys()]
-ds = concatenate_datasets(datasets)
-ds = ds.shuffle(seed=42, buffer_size=10000)
-ds_samples = list(islice(ds, N_CALIBRATION_SAMPLES))
+# Load and take first N samples (no shuffling)
+ds_samples = list(islice(
+    load_dataset("nvidia/OpenMathReasoning", split='tir', streaming=True),
+    N_CALIBRATION_SAMPLES
+))
 
-# Create a simple list of dictionaries with just the "text" field
-texts = []
-for sample in ds_samples:
-    sample_dict = {k:v for k,v in sample.items() if k in ['problem', 'generation']}
-    text = prompt_template.fill(sample_dict,
-                        continue_prefix_generation=True,
-                        prefix_generation_to_response=True)
-    texts.append(text)  # Just store the text strings directly
+# Create dataset with formatted text
+calib_ds = Dataset.from_dict({
+    "text": [
+        prompt_template.fill(
+            {k: v for k, v in sample.items() if k in ['problem', 'generation']},
+            continue_prefix_generation=True,
+            prefix_generation_to_response=True
+        )
+        for sample in ds_samples
+    ]
+})
 
-# Create a minimal dataset with just the text column
-calib_ds = Dataset.from_dict({"text": texts})  # Explicitly create a dict with "text" column
-
-# Save in the correct format
+# Save
 os.makedirs(LOCAL_DATASET_PATH, exist_ok=True)
-
-# Save the dataset
 calib_ds.to_parquet(f"{LOCAL_DATASET_PATH}/data.parquet")
 ```
 
@@ -117,8 +115,9 @@ python quantize.py --model_dir ../../../OpenMath-Nemotron-14B-Kaggle \
 cd ../../../
 ```
 
-Now we have a fp8 quantised checkpoint, so we can build our engine. Note, there is an open issue in using fp8 kv cache for this model so we do not use this. If you do not use ReDrafter, set `--max_num_tokens 1000`. This is related to the chunked context is incompatible currently with ReDrafter/Medusa.
+Now we have a fp8 quantised checkpoint, so we can build our engine. Note, there is an open issue in using fp8 kv cache for this model so we do not use this. If you do not use ReDrafter, set `--max_num_tokens 1000`. This is related to the chunked context which is incompatible currently with ReDrafter.
 ```
+# Build the engine
 trtllm-build --checkpoint_dir OpenMath-Nemotron-14B-Kaggle-fp8-ckpt \
     --output_dir OpenMath-Nemotron-14B-Kaggle-fp8-trtllm \
     --gemm_plugin  auto \
@@ -129,21 +128,35 @@ trtllm-build --checkpoint_dir OpenMath-Nemotron-14B-Kaggle-fp8-ckpt \
     --max_num_tokens 22000 \
     --max_beam_width 1 \
     --kv_cache_type paged
+
+# Copy the tokenizers to the engine directory
+cp OpenMath-Nemotron-14B-Kaggle/*tok* OpenMath-Nemotron-14B-Kaggle-fp8-trtllm/
 ```
 
 Now your engine is ready to be served.
 
+#### 🏗️ ReDrafter speculative decoding (Work in Progress)
 
-#### Optionally add speculative decoding
-
-Create a calibration dataset & as well as (have we released any open math generations).
-Train a redrafter model.
-Attach weights to an FP8 quantized checkpoint.
+Planned work includes:
+- Training a redrafter model
+- Attaching weights to an FP8 quantized checkpoint
 
 
-## Launch servers
+## 🏗️ Launch servers (Work in Progress)
 
-...
+!TODO - PR Flask import
+!TODO - Install a fixed version of TRTLLM
+
+```
+cd /mount/data/pkgs/aimo2/v01/
+mpirun --allow-run-as-root -n 2 ns start_server --model=./OpenMath-Nemotron-14B-Kaggle-fp8-trtllm  --server_gpus=2 \
+    --server_type trtllm --server_args "--kv_cache_free_gpu_memory_fraction=0.92 --max_batch_size 12" --with_sandbox
+
+mpirun --allow-run-as-root -n 2 python -m nemo_skills.inference.server.serve_trt \
+    --model_path ./OpenMath-Nemotron-14B-Kaggle-fp8-trtllm  --port 5000 --kv_cache_free_gpu_memory_fraction=0.92 --max_batch_size 12
+```
+
+If you run into problems and need to restart the server, you can kill existing `mpirun` processes with `pkill -9 -f mpirun`.
 
 ### Code execution server
 
