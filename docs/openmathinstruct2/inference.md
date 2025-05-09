@@ -19,7 +19,7 @@ Note: If using PyTorch, ensure it's built with C++11 ABI enabled (see [known lim
 apt-get update && apt-get -y install python3.10 python3-pip openmpi-bin libopenmpi-dev git git-lfs vim
 
 # Install tensorrt_llm
-pip3 install tensorrt_llm -U --pre --extra-index-url https://pypi.nvidia.com
+pip3 install tensorrt_llm==0.18.2 -U --pre --extra-index-url https://pypi.nvidia.com
 
 # Check the installation was successful
 python3 -c "import tensorrt_llm"
@@ -103,7 +103,7 @@ We use a tensor parallelism setting of `--tp_size 2`, as we have two gpu case in
 ```
 git clone https://github.com/NVIDIA/TensorRT-LLM.git
 cd TensorRT-LLM/examples/quantization/
-
+git checkout v0.18.2
 python quantize.py --model_dir ../../../OpenMath-Nemotron-14B-Kaggle \
                                    --dtype float16 \
                                    --qformat fp8 \
