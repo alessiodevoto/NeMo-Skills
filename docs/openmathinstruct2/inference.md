@@ -96,8 +96,9 @@ os.makedirs(LOCAL_DATASET_PATH, exist_ok=True)
 calib_ds.to_parquet(f"{LOCAL_DATASET_PATH}/data.parquet")
 ```
 
-Now that our dataset is saved, let start calibration and conversion to `TensorRT-LLM` engine format.
-We use a tensor parallelism setting of `--tp_size 2`, as we have two gpu case in our environment, feel free to
+Now that our dataset is saved, let start calibration and conversion to `TensorRT-LLM` engine format. There are two steps run here, quantisation of the weights and saving them to a `TensorRT-LLM` pytorch checkpoint, and building the checkpoint into an C++ engine. You can also run the individual steps by following the `examples/models/` folder in `TensorRT-LLM` repo and looking at the options for each architecture.
+
+We use a tensor parallelism setting of `--num_gpus 2`, as we have two gpu case in our environment - the model is split using tensor parallelism over these two gpus.
 
 ```
 ns convert --input_model OpenMath-Nemotron-1.5B \
