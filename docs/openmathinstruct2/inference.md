@@ -2,7 +2,7 @@
 
 This section demonstrates how to create a [NeMo-Skills](https://nvidia.github.io/NeMo-Skills/) inference engine for answering unseen math problems. The engine can be hosted locally or in a Docker container. While we show a [TensorRT-LLM](https://github.com/NVIDIA/TensorRT-LLM) server example, similar setups work with [NeMo](https://github.com/NVIDIA/NeMo), [vLLM](https://github.com/vllm-project/vllm), or [sglang](https://github.com/sgl-project/sglang) servers.
 
-![Inference Architecture](../figs/inference_engine.png)
+![Inference Architecture](../figs/inference.png)
 
 ## TensorRT-LLM Setup
 
