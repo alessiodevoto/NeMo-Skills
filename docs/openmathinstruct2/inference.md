@@ -28,7 +28,7 @@ python -c 'import tensorrt_llm'
 
 We also install Nemo-Skills.
 ```
-pip install git+https://github.com/NVIDIA/NeMo-Skills.git@dh/fp8_v01
+pip install git+https://github.com/NVIDIA/NeMo-Skills.git
 python3 -c "import nemo_skills"
 ```
 
@@ -119,6 +119,53 @@ Planned work includes:
 - Training a redrafter model
 - Attaching weights to an FP8 quantized checkpoint
 
+### ReDrafter Training
+
+To train ReDrafter for the `OpenMath-Nemotron-1.5B` model we run the below. We train below on the same dataset the model was trained on. If this data is not available the redrafter could alternatively be trained on prompts and generations form your model. Feel free to test different parameters, however we found 20k samples or more was sufficent to train a good ReDrafter.
+```
+# Install the ReDrafter library, we are on a later version of python so can ignore that check.
+pip install --no-binary=protobuf --ignore-requires-python \
+        "git+https://github.com/apple/ml-recurrent-drafter.git#egg=recurrent-drafting[dev,train]"
+
+# Train
+ns run_cmd --log_dir ./logs/ \
+torchrun --nproc_per_node=2 -m nemo_skills.training.train_redrafter \
+    --llm_name_or_path 'OpenMath-Nemotron-1.5B' \
+    --bf16 True \
+    --output_dir "redrafter_" \
+    --num_train_epochs 1 \
+    --per_device_train_batch_size 1 \
+    --gradient_accumulation_steps 4 \
+    --save_strategy "no" \
+    --learning_rate 0.001 \
+    --weight_decay 0. \
+    --warmup_ratio 0.1 \
+    --lr_scheduler_type "cosine" \
+    --logging_steps 20 \
+    --tf32 True \
+    --model_max_length 2048 \
+    --dataset_nrows 100000 \
+    --drafter_predict_n_tokens 3 \
+    --drafter_num_layers 2 \
+    --rnn True \
+    --phase train \
+    --report_to wandb
+```
+
+You can add W&B logging by setting `--report_to wandb`. Intermittent logs should be reported to screen like below, ideally you will be reaching a `redrafter2_top1` score over `0.6`, which means in 60% of the steps the next three tokens are accepted from the draft model.
+
+```
+{'redrafter0_top1': 0.8328, 'redrafter0_top2': 0.9262, 'redrafter0_top3': 0.9545, 'redrafter0_top4': 0.9731, 'redrafter0_top5': 0.9785, 'redrafter0_loss': 0.5236, 'redrafter1_top1': 0.7697, 'redrafter1_top2': 0.8895, 'redrafter1_top3': 0.9301, 'redrafter1_top4': 0.9477, 'redrafter1_top5': 0.9589, 'redrafter1_loss': 0.7651, 'redrafter2_top1': 0.7123, 'redrafter2_top2': 0.8425, 'redrafter2_top3': 0.8953, 'redrafter2_top4': 0.93, 'redrafter2_top5': 0.9481, 'redrafter2_loss': 0.936, 'epoch': 1.0}
+```
+
+Below is and example of the acceptance rate during training. Note, as we only use one epoch we do not evaluate on a separate set.
+
+```
+WANDB dIMAGE TO BE UPDATED
+```
+
+### 🏗️ Building draft model
+
 
 ## 🏗️ Launching Servers (Work in Progress)
 
@@ -146,7 +193,8 @@ ns start_server --model=./OpenMath-Nemotron-14B-kaggle-fp8-trtllm/
                 --with_sandbox
 ```
 
-### LLM generate
+### 🏗️ LLM generate
+
 
 
 ```
