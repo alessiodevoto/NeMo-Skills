@@ -158,15 +158,13 @@ You can add W&B logging by setting `--report_to wandb`. Intermittent logs should
 {'redrafter0_top1': 0.8328, 'redrafter0_top2': 0.9262, 'redrafter0_top3': 0.9545, 'redrafter0_top4': 0.9731, 'redrafter0_top5': 0.9785, 'redrafter0_loss': 0.5236, 'redrafter1_top1': 0.7697, 'redrafter1_top2': 0.8895, 'redrafter1_top3': 0.9301, 'redrafter1_top4': 0.9477, 'redrafter1_top5': 0.9589, 'redrafter1_loss': 0.7651, 'redrafter2_top1': 0.7123, 'redrafter2_top2': 0.8425, 'redrafter2_top3': 0.8953, 'redrafter2_top4': 0.93, 'redrafter2_top5': 0.9481, 'redrafter2_loss': 0.936, 'epoch': 1.0}
 ```
 
-Below is and example of the acceptance rate during training. Note, as we only use one epoch we do not evaluate on a separate set.
+Below is an example of the acceptance rate during training. Note, as we only use one epoch we do not evaluate on a separate validation set.
 
-```
-WANDB dIMAGE TO BE UPDATED
-```
+![ReDrafter training](../figs/redrafter_training.png)
 
 ### 🏗️ Building draft model
 
-TBD
+
 
 ## 🏗️ Launching Servers (Work in Progress)
 
