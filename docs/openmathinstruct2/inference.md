@@ -12,7 +12,7 @@ We use TensorRT-LLM to convert pretrained models into TensorRT engines, leveragi
 
 For TensorRT installation on linux, refer to the [installation guide](https://nvidia.github.io/TensorRT-LLM/installation/linux.html).
 
-In this example we work off the `nvcr.io/nvidia/pytorch:24.11-py3` container. Where we install by running the below,
+In this example we work off the `nvcr.io/nvidia/pytorch:25.01-py3` container. Where we install by running the below,
 ```
 # See section `Install inside the PyTorch NGC Container`
 [ -f /etc/pip/constraint.txt ] && : > /etc/pip/constraint.txt
@@ -312,5 +312,36 @@ pkill -9 -f mpirun
 
 huggingface-cli download lmsys/vicuna-7b-v1.3 --local-dir vicuna-7b-v1.3
 
-huggingface-cli download Qwen/Qwen-7B --local-dir Qwen-7B
+huggingface-cli download Qwen/Qwen-7B-Chat --local-dir Qwen-7B-Chat
+huggingface-cli download  Qwen/Qwen2.5-7B-Instruct --local-dir Qwen2.5-7B-Instruct
+cd /mount/data/pkgs/aimo2/v06/
+git clone https://github.com/apple/ml-recurrent-drafter.git
+cd ml-recurrent-drafter/
+pip install --no-binary=protobuf --ignore-requires-python -e .
+cd /mount/data/pkgs/aimo2/v06/ml-recurrent-drafter/recurrent_drafting/cmd
+
+cd ../../
+
+ln -s /mount/data/pkgs/aimo2/v06/Qwen-7B/
+ln -s /mount/data/pkgs/aimo2/v06/vicuna-7b-v1.3/
+ln -s /mount/data/pkgs/aimo2/v06/Qwen-7B-Chat/
+
+# change n_proc to 2;
+    change epochs to 0.8
+    and model to vicuna-7b-v1.3;
+    remove `set -e`;
+    remove the ['--evaluation_strategy', 'no'] line
+    set num_proc=16 at the bottom of train.py
+vim recurrent_drafting/cmd/train.sh
+wandb login --relogin
+pip install transformers==4.45.2 sentence-transformers==3.1.1
+./recurrent_drafting/cmd/train.sh
+
+# For qwen only, in train.py do the below when loading the tokenizer and add `trust_remote_code=True`
+tokenizer.pad_token = '<|extra_0|>'
+tokenizer.pad_token_id = tokenizer.convert_tokens_to_ids('<|extra_0|>')
+
+
+# At the end
+pip install --upgrade  transformers==4.51.1
 ```
