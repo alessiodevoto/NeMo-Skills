@@ -112,11 +112,9 @@ ns convert --input_model  OpenMath-Nemotron-14B-kaggle \
 ```
 Now your engine is ready to be served.
 
-#### 🏗️ ReDrafter speculative decoding (Work in Progress)
+## 🏗️ ReDrafter speculative decoding
 
-Planned work includes:
-- Training a redrafter model
-- Attaching weights to an FP8 quantized checkpoint
+[ReDrafter](https://machinelearning.apple.com/research/redrafter-nvidia-tensorrt-llm) uses an RNN draft model, and combines beam search with dynamic tree attention to speed up LLM token generation by up to 3.5 tokens per generation step for open source models, surpassing the performance of prior speculative decoding techniques.
 
 ### ReDrafter Training
 
@@ -182,7 +180,6 @@ python convert_checkpoint.py --model_dir ../../../OpenMath-Nemotron-14B-kaggle-f
                              --redrafter_num_beams 1 \
                              --redrafter_draft_len_per_beam 3
 cd ../../../
-
 ```
 
 🏗️ Temporary hack prior to having trtllm pr merged.
