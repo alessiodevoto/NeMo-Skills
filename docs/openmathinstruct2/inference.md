@@ -18,11 +18,9 @@ In this example we work off the `nvcr.io/nvidia/pytorch:24.11-py3` container. Wh
 [ -f /etc/pip/constraint.txt ] && : > /etc/pip/constraint.txt
 pip uninstall -y tensorrt
 
-# Install via pip and upgrade flash-attn
-pip3 install tensorrt_llm==0.18.0 -U --pre --extra-index-url https://pypi.nvidia.com
-pip3 install --upgrade flash-attn
+pip3 install tensorrt_llm==0.21.0rc0 -U --pre --extra-index-url https://pypi.nvidia.com
 
-# Check everyhting runs ok
+# Check everything runs ok
 python -c 'import tensorrt_llm'
 ```
 
@@ -52,6 +50,7 @@ pip install -U "huggingface_hub[cli]"
 
 # Download the weights to a local directory
 huggingface-cli download nvidia/OpenMath-Nemotron-14B-kaggle --local-dir OpenMath-Nemotron-14B-kaggle
+huggingface-cli download nvidia/OpenMath-Nemotron-1.5B --local-dir OpenMath-Nemotron-1.5B
 ```
 
 For calibration of the weights during quantisation we also need a dataset. We will use the dataset the models were trained on.
@@ -162,8 +161,60 @@ Below is an example of the acceptance rate during training. Note, as we only use
 
 ![ReDrafter training](../figs/redrafter_training.png)
 
-### 🏗️ Building draft model
+### 🏗️ Building TensorRT-LLM engine for draft model
 
+
+
+Clone `TensorRT-LLM` so we have the examples with conversion scripts.
+```
+git clone https://github.com/darraghdog/TensorRT-LLM/
+```
+When `NeMo-Skills` quantises a model we get a pytorch quantised checkpoint which is used to build the engine. We shall use this checkpoint to build a engine with `ReDrafter`. From the quantisation above, your checkpoint should be named something like, `OpenMath-Nemotron-14B-kaggle-fp8-trtllm-tmp-ckpt`.
+
+We create the ReDrafter model using our trained,
+```
+cd ./TensorRT-LLM/examples/redrafter
+python convert_checkpoint.py --model_dir ../../../OpenMath-Nemotron-14B-kaggle-fp8-trtllm-tmp-ckpt \
+                             --drafter_model_dir ../../../redrafter__redrafter_OpenMath-Nemotron-14B-kaggle_n_3_lr_0.001_layers_2 \
+                             --output_dir ../../../OpenMath-Nemotron-14B-kaggle-fp8-redrafter-tmp-ckpt \
+                             --dtype float16 \
+                             --tp_size 2 \
+                             --redrafter_num_beams 1 \
+                             --redrafter_draft_len_per_beam 3
+cd ../../../
+
+```
+
+🏗️ Temporary hack prior to having trtllm pr merged.
+```
+PKGDIR="/usr/local/lib/python3.12/dist-packages/tensorrt_llm/"
+cp TensorRT-LLM/tensorrt_llm/models/redrafter/model.py \
+    ${PKGDIR}/models/redrafter/
+cp TensorRT-LLM/tensorrt_llm/models/__init__.py \
+    ${PKGDIR}/models/
+```
+
+Now we build the checkpoint. Here we need to use the `trtllm-build` command. As we pass token sequences form the model to the sandbox and back, even if the initial math question is short, we need a long input length allowed to accomodate the llm generation plus the executed code.
+
+```
+trtllm-build --checkpoint_dir OpenMath-Nemotron-14B-kaggle-fp8-redrafter-tmp-ckpt \
+    --output_dir OpenMath-Nemotron-14B-kaggle-fp8-redrafter-trtllm \
+     --gemm_plugin fp8 \
+     --use_paged_context_fmha=enable \
+     --max_batch_size 32 \
+     --max_seq_len 32000 \
+     --max_input_len  32000 \
+     --max_num_tokens 32000 \
+     --speculative_decoding_mode explicit_draft_tokens \
+     --max_beam_width 1 \
+     --kv_cache_type paged
+```
+
+And finally we copy the tokenizer.
+```
+# Copy the tokenizer
+cp ${BASEDIR}/OpenMath-Nemotron-1.5B/*tok* tllm_checkkpoint_2gpu_redrafter_trtllm/
+```
 
 
 ## 🏗️ Launching Servers (Work in Progress)
@@ -241,3 +292,28 @@ output[0]['generation']
 
 Set and explain timeout time...
 See kaggle notebook for eary stopping etc...
+
+In this example we work off the `nvcr.io/nvidia/pytorch:25.01-py3` container.
+```
+# See section `Install inside the PyTorch NGC Container`
+[ -f /etc/pip/constraint.txt ] && : > /etc/pip/constraint.txt
+pip uninstall -y tensorrt
+
+pip3 install tensorrt_llm==0.21.0rc0 -U --pre --extra-index-url https://pypi.nvidia.com
+
+# Check everything runs ok
+python -c 'import tensorrt_llm'
+```
+
+
+### MISC - 🏗️ To be deleted later
+
+```
+# To kill existing mpirun
+pkill -9 -f mpirun
+
+
+huggingface-cli download lmsys/vicuna-7b-v1.3 --local-dir vicuna-7b-v1.3
+
+huggingface-cli download Qwen/Qwen-7B --local-dir Qwen-7B
+```
