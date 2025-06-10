@@ -137,7 +137,7 @@ ns convert --input_model  OpenMath-Nemotron-14B-kaggle \
 ```
 Now your engine is ready to be served.
 
-## 🏗️ ReDrafter speculative decoding
+## ReDrafter speculative decoding
 
 [ReDrafter](https://machinelearning.apple.com/research/redrafter-nvidia-tensorrt-llm) uses an RNN draft model, and combines beam search with dynamic tree attention to speed up LLM token generation by up to 3.5 tokens per generation step for open source models, surpassing the performance of prior speculative decoding techniques.
 
@@ -184,7 +184,7 @@ Below is an example of the acceptance rate during training. Note, as we only use
 
 ![ReDrafter training](../figs/redrafter_training.png)
 
-### 🏗️ Building TensorRT-LLM engine for draft model
+### Building TensorRT-LLM engine for draft model
 
 Clone `TensorRT-LLM` so we have the examples with conversion scripts.
 ```
