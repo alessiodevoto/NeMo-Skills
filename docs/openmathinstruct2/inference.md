@@ -8,6 +8,29 @@ This section demonstrates how to create a [NeMo-Skills](https://nvidia.github.io
 
 We use TensorRT-LLM to convert pretrained models into TensorRT engines, leveraging inflight batching for improved throughput and latency.
 
+### Installation 🏗️ while waiting for PR merge (build from my PR repo)
+
+For TensorRT installation on linux, refer to the [installation guide](https://nvidia.github.io/TensorRT-LLM/installation/linux.html).
+
+In this example we work off the `nvcr.io/nvidia/pytorch:25.01-py3` container. Where we install by running the below,
+```
+# TensorRT-LLM uses git-lfs, which needs to be installed in advance.
+apt-get update && apt-get -y install git git-lfs
+git lfs install
+
+git clone https://github.com/darraghdog/TensorRT-LLM.git -b dh/aimo2_v01
+cd TensorRT-LLM
+
+
+# See section `Install inside the PyTorch NGC Container`
+[ -f /etc/pip/constraint.txt ] && : > /etc/pip/constraint.txt
+pip uninstall -y tensorrt
+TRTLLM_PRECOMPILED_LOCATION=https://pypi.nvidia.com/tensorrt-llm/tensorrt_llm-0.21.0rc0-cp312-cp312-linux_x86_64.whl pip install -e .
+
+# Check everything runs ok
+python -c 'import tensorrt_llm'
+```
+
 ### Installation
 
 For TensorRT installation on linux, refer to the [installation guide](https://nvidia.github.io/TensorRT-LLM/installation/linux.html).
@@ -23,6 +46,8 @@ pip3 install tensorrt_llm==0.21.0rc0 -U --pre --extra-index-url https://pypi.nvi
 # Check everything runs ok
 python -c 'import tensorrt_llm'
 ```
+
+
 
 We also install Nemo-Skills.
 ```
@@ -161,42 +186,34 @@ Below is an example of the acceptance rate during training. Note, as we only use
 
 ### 🏗️ Building TensorRT-LLM engine for draft model
 
-
-
 Clone `TensorRT-LLM` so we have the examples with conversion scripts.
 ```
-git clone https://github.com/darraghdog/TensorRT-LLM/
+git clone https://github.com/darraghdog/TensorRT-LLM/ -b dh/aimo2_v01
 ```
 When `NeMo-Skills` quantises a model we get a pytorch quantised checkpoint which is used to build the engine. We shall use this checkpoint to build a engine with `ReDrafter`. From the quantisation above, your checkpoint should be named something like, `OpenMath-Nemotron-14B-kaggle-fp8-trtllm-tmp-ckpt`.
 
-We create the ReDrafter model using our trained,
+We create the ReDrafter model using our trained model. Ensure that the `dtype` of your drafter is the same as the converted base model.
 ```
+export BASE_TRTLLM_CKPT=$(pwd)/OpenMath-Nemotron-14B-kaggle-fp8-trtllm-tmp-ckpt
+export REDRAFTER_PYTORCH_CKPT=$(pwd)/redrafter__redrafter_OpenMath-Nemotron-14B-kaggle_n_3_lr_0.001_layers_2
+export REDRAFTER_TRTLLM_CKPT=$(pwd)/OpenMath-Nemotron-14B-kaggle-fp8-draft-ckpt
 cd ./TensorRT-LLM/examples/redrafter
-python convert_checkpoint.py --model_dir ../../../OpenMath-Nemotron-14B-kaggle-fp8-trtllm-tmp-ckpt \
-                             --drafter_model_dir ../../../redrafter__redrafter_OpenMath-Nemotron-14B-kaggle_n_3_lr_0.001_layers_2 \
-                             --output_dir ../../../OpenMath-Nemotron-14B-kaggle-fp8-redrafter-tmp-ckpt \
-                             --dtype float16 \
+python convert_checkpoint.py --base_model_checkpoint_dir $BASE_TRTLLM_CKPT \
+                             --drafter_model_dir $REDRAFTER_PYTORCH_CKPT \
+                             --output_dir $REDRAFTER_TRTLLM_CKPT \
+                             --dtype bfloat16 \
                              --tp_size 2 \
                              --redrafter_num_beams 1 \
                              --redrafter_draft_len_per_beam 3
 cd ../../../
 ```
 
-🏗️ Temporary hack prior to having trtllm pr merged.
-```
-PKGDIR="/usr/local/lib/python3.12/dist-packages/tensorrt_llm/"
-cp TensorRT-LLM/tensorrt_llm/models/redrafter/model.py \
-    ${PKGDIR}/models/redrafter/
-cp TensorRT-LLM/tensorrt_llm/models/__init__.py \
-    ${PKGDIR}/models/
-```
-
 Now we build the checkpoint. Here we need to use the `trtllm-build` command. As we pass token sequences form the model to the sandbox and back, even if the initial math question is short, we need a long input length allowed to accomodate the llm generation plus the executed code.
 
 ```
-trtllm-build --checkpoint_dir OpenMath-Nemotron-14B-kaggle-fp8-redrafter-tmp-ckpt \
+trtllm-build --checkpoint_dir $REDRAFTER_TRTLLM_CKPT \
     --output_dir OpenMath-Nemotron-14B-kaggle-fp8-redrafter-trtllm \
-     --gemm_plugin fp8 \
+    --gemm_plugin fp8 \
      --use_paged_context_fmha=enable \
      --max_batch_size 32 \
      --max_seq_len 32000 \
@@ -210,7 +227,7 @@ trtllm-build --checkpoint_dir OpenMath-Nemotron-14B-kaggle-fp8-redrafter-tmp-ckp
 And finally we copy the tokenizer.
 ```
 # Copy the tokenizer
-cp ${BASEDIR}/OpenMath-Nemotron-1.5B/*tok* tllm_checkkpoint_2gpu_redrafter_trtllm/
+cp OpenMath-Nemotron-14B-kaggle/*tok* OpenMath-Nemotron-14B-kaggle-fp8-redrafter-trtllm/
 ```
 
 
@@ -306,6 +323,300 @@ python -c 'import tensorrt_llm'
 ### MISC - 🏗️ To be deleted later
 
 ```
+mkdir /mount/data/pkgs/aimo2/v11
+cd /mount/data/pkgs/aimo2/v11
+
+
+export BASEDIR=/mount/data/pkgs/aimo2/v11/
+export VICDIR=${BASEDIR}/vicuna-7b-v1.3/
+export VICREDIR=${BASEDIR}/vicuna-7b-v1.3-redrafter/
+
+git clone https://github.com/NVIDIA/TensorRT-LLM.git
+
+cd TensorRT-LLM/examples/redrafter/
+
+python convert_checkpoint.py --model_dir $VICDIR \
+                             --drafter_model_dir $VICREDIR \
+                             --output_dir ./tllm_checkkpoint_1gpu_redrafter \
+                             --dtype bfloat16 \
+                             --redrafter_num_beams 4 \
+                             --redrafter_draft_len_per_beam 5
+
+
+trtllm-build --checkpoint_dir ./tllm_checkkpoint_1gpu_redrafter \
+             --output_dir ./tmp/redrafter/7B/trt_engines/fp16/1-gpu/ \
+             --gemm_plugin bfloat16 \
+             --speculative_decoding_mode explicit_draft_tokens \
+             --max_batch_size 4
+
+```
+
+
+
+
+```
+
+echo $HISTSIZE $HISTFILESIZE
+export HISTSIZE=50000
+export HISTFILESIZE=100000
+
+
+mkdir /mount/data/pkgs/aimo2/v17
+cd /mount/data/pkgs/aimo2/v17
+ls -lahtr ./
+# TensorRT-LLM uses git-lfs, which needs to be installed in advance.
+apt-get update && apt-get -y install git git-lfs
+git lfs install
+
+git clone https://github.com/darraghdog/TensorRT-LLM.git -b dh/aimo2_v01
+cd TensorRT-LLM
+git submodule update --init --recursive
+git lfs pull
+
+# See section `Install inside the PyTorch NGC Container`
+[ -f /etc/pip/constraint.txt ] && : > /etc/pip/constraint.txt
+pip uninstall -y tensorrt
+TRTLLM_PRECOMPILED_LOCATION=https://pypi.nvidia.com/tensorrt-llm/tensorrt_llm-0.21.0rc0-cp312-cp312-linux_x86_64.whl pip install -e .
+
+
+
+# Check everything runs ok
+python -c 'import tensorrt_llm'
+
+
+cp -r /mount/data/pkgs/aimo2/v06/vicuna-7b-v1.3/ .
+cp -r /mount/data/pkgs/aimo2/v06/2025-06-04_13:32:16_redrafter_vicuna-7b-v1.3_n_5_lr_0.001_layers_2/ .
+cp -r /mount/data/pkgs/aimo2/v06/Qwen2.5-7B-Instruct/ .
+cp -r /mount/data/pkgs/aimo2/v06/redrafter__redrafter_Qwen2.5-7B-Instruct_n_3_lr_0.001_layers_2/ .
+
+cd $BASEDIR
+ln -s /mount/data/pkgs/aimo2/v06/vicuna-7b-v1.3
+ln -s /mount/data/pkgs/aimo2/v06/2025-06-04_13:32:16_redrafter_vicuna-7b-v1.3_n_5_lr_0.001_layers_2/ vicuna-7b-v1.3-redrafter
+
+export BASEDIR=/mount/data/pkgs/aimo2/v17/
+export VICDIR=${BASEDIR}/vicuna-7b-v1.3/
+export VICCKPTDIR=${BASEDIR}/vicuna-7b-v1.3-ckpt/
+export VICREDIR=${BASEDIR}/vicuna-7b-v1.3-redrafter/
+export VICRECKPTDIR=${BASEDIR}/vicuna-7b-v1.3-redrafter-ckpt/
+export VICRETRTDIR=${BASEDIR}/vicuna-7b-v1.3-redrafter-trtllm/
+
+cd ${BASEDIR}/TensorRT-LLM/examples/models/core/llama/
+python convert_checkpoint.py --model_dir $VICDIR \
+                              --output_dir $VICCKPTDIR \
+                              --dtype float16
+
+cd ${BASEDIR}/TensorRT-LLM/examples/redrafter/
+python convert_checkpoint.py --base_model_checkpoint_dir $VICCKPTDIR \
+                             --drafter_model_dir $VICREDIR \
+                             --output_dir $VICRECKPTDIR \
+                             --dtype float16 \
+                             --redrafter_num_beams 6 \
+                             --redrafter_draft_len_per_beam 6
+
+cd ${BASEDIR}/
+trtllm-build --checkpoint_dir $VICRECKPTDIR \
+             --output_dir $VICRETRTDIR \
+             --gemm_plugin float16 \
+             --speculative_decoding_mode explicit_draft_tokens \
+             --max_beam_width 1 \
+             --max_batch_size 4
+
+cd ${BASEDIR}/TensorRT-LLM/examples/redrafter/
+python ../run.py --engine_dir $VICRETRTDIR \
+                 --tokenizer_dir $VICDIR \
+                 --max_output_len=100 \
+                 --input_text "Once upon" "The basic idea of a Transformer model is"
+
+
+
+[06/09/2025-12:36:12] [TRT] [W] ReDrafterForLLaMALM/_fwd_helper_L75/_process_logits_and_hidden_states_L737/_process_gen_logits_L600/_validate_draft_tokens_L87/elementwise_binary_L3011/ELEMENTWISE_LESS_0: dimensions not compatible for elementwise.
+[06/09/2025-12:36:12] [TRT] [W] Was not able to infer a kOPT value for tensor ReDrafterForLLaMALM/_fwd_helper_L75/_process_logits_and_hidden_states_L693/sum_L3274/reduce_L3193/REDUCE_SUM_0_output_0. Using one(s).
+[06/09/2025-12:36:12] [TRT] [W] Was not able to infer a kOPT value for tensor ReDrafterForLLaMALM/_fwd_helper_L75/_process_logits_and_hidden_states_L721/_get_gen_token_indices_for_unpack_L620/max_L3249/reduce_L3193/REDUCE_MAX_0_output_0. Using one(s).
+[06/09/2025-12:36:12] [TRT] [E] IBuilder::buildSerializedNetwork: Error Code 4: Internal Error (kOPT values for profile 0 violate shape constraints: ReDrafterForLLaMALM/_fwd_helper_L75/_process_logits_and_hidden_states_L737/_process_gen_logits_L600/_validate_draft_tokens_L80/slice_L1323/SLICE_0: ISliceLayer has out of bounds access on axis 0 Out of bounds access for slice.)
+Traceback (most recent call last):
+  File "/usr/local/bin/trtllm-build", line 8, in <module>
+    sys.exit(main())
+             ^^^^^^
+  File "/mount/data/pkgs/aimo2/v14/TensorRT-LLM/tensorrt_llm/commands/build.py", line 626, in main
+    parallel_build(model_config, ckpt_dir, build_config, args.output_dir,
+  File "/mount/data/pkgs/aimo2/v14/TensorRT-LLM/tensorrt_llm/commands/build.py", line 419, in parallel_build
+    passed = build_and_save(rank, rank % workers, ckpt_dir,
+             ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mount/data/pkgs/aimo2/v14/TensorRT-LLM/tensorrt_llm/commands/build.py", line 384, in build_and_save
+    engine = build_model(build_config,
+             ^^^^^^^^^^^^^^^^^^^^^^^^^
+  File "/mount/data/pkgs/aimo2/v14/TensorRT-LLM/tensorrt_llm/commands/build.py", line 377, in build_model
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+cd $BASEDIR
+ln -s /mount/data/pkgs/aimo2/v06/Qwen2.5-7B-Instruct
+ln -s /mount/data/pkgs/aimo2/v06/redrafter__redrafter_Qwen2.5-7B-Instruct_n_3_lr_0.001_layers_2/ Qwen2.5-7B-Instruct-redrafter
+
+
+
+
+
+QWDIR=${BASEDIR}/Qwen2.5-7B-Instruct/
+QWCKPTDIR=${BASEDIR}/Qwen2.5-7B-Instruct-ckpt/
+QWREDIR=${BASEDIR}/Qwen2.5-7B-Instruct-redrafter/
+QWRECKPTDIR=${BASEDIR}/Qwen2.5-7B-Instruct-redrafter-ckpt/
+QWRETRTDIR=${BASEDIR}/Qwen2.5-7B-Instruct-redrafter-trtllm/
+
+cd ${BASEDIR}/TensorRT-LLM/examples/models/core/qwen/
+python ../../../quantization/quantize.py --model_dir $QWDIR \
+                                   --dtype float16 \
+                                   --qformat fp8 \
+                                   --output_dir $QWCKPTDIR \
+                                   --calib_size 512
+
+
+cd ${BASEDIR}/TensorRT-LLM/examples/redrafter/
+python convert_checkpoint.py --base_model_checkpoint_dir $QWCKPTDIR \
+                             --drafter_model_dir $QWREDIR \
+                             --output_dir $QWRECKPTDIR \
+                             --dtype float16 \
+                             --redrafter_num_beams 6 \
+                             --redrafter_draft_len_per_beam 6
+
+# Build trtllm engines from the trtllm checkpoint
+# Enable fp8 context fmha to get further acceleration by setting `--use_fp8_context_fmha enable`
+trtllm-build --checkpoint_dir $QWRECKPTDIR \
+             --output_dir $QWRETRTDIR \
+             --gemm_plugin fp8 \
+             --speculative_decoding_mode explicit_draft_tokens \
+             --max_beam_width 6 \
+             --max_batch_size 4
+
+
+python ../run.py --engine_dir $QWRETRTDIR \
+                 --tokenizer_dir $QWDIR \
+                 --max_output_len=100 \
+                 --input_text "Once upon" "The basic idea of a Transformer model is"
+
+
+
+
+
+
+
+
+
+export BASEDIR=/mount/data/pkgs/aimo2/v10/
+export VICDIR=${BASEDIR}/vicuna-7b-v1.3/
+export VICCKPTDIR=${BASEDIR}/vicuna-7b-v1.3-ckpt/
+export VICREDIR=${BASEDIR}/2025-06-04_13:32:16_redrafter_vicuna-7b-v1.3_n_5_lr_0.001_layers_2/
+export VICRECKPTDIR_66=${BASEDIR}/vicuna-7b-v1.3-redrafter-66/
+export VICRETRTDIR_66=${BASEDIR}/vicuna-7b-v1.3-redrafter-trtllm-66/
+
+
+cd ${BASEDIR}/TensorRT-LLM/examples/redrafter/
+
+# From the `examples/redrafter/` directory, run,
+python convert_checkpoint.py --base_model_checkpoint_dir $VICCKPTDIR \
+                             --drafter_model_dir $VICREDIR \
+                             --output_dir $VICRECKPTDIR_66 \
+                             --dtype float16 \
+                             --redrafter_num_beams 6 \
+                             --redrafter_draft_len_per_beam 6
+
+cd ${BASEDIR}/
+trtllm-build --checkpoint_dir $VICRECKPTDIR_66 \
+             --output_dir $VICRETRTDIR_66 \
+             --gemm_plugin float16 \
+             --speculative_decoding_mode explicit_draft_tokens \
+             --max_beam_width 6 \
+             --max_batch_size 4
+
+python run.py --engine_dir $VICRETRTDIR_66 \
+                 --tokenizer_dir $VICDIR \
+                 --max_output_len=100 \
+                 --input_text "Once upon" "The basic idea of a Transformer model is"
+
+
+
+QWDIR=${BASEDIR}/Qwen2.5-7B-Instruct/
+QWCKPTDIR=${BASEDIR}/Qwen2.5-7B-Instruct-ckpt/
+QWREDIR=${BASEDIR}/redrafter__redrafter_Qwen2.5-7B-Instruct_n_3_lr_0.001_layers_2/
+QWRECKPTDIR_66=${BASEDIR}/Qwen2.5-7B-Instruct-redrafter/
+QWRETRTDIR_66=${BASEDIR}/Qwen2.5-7B-Instruct-redrafter-trtllm/
+
+
+cd ${BASEDIR}/TensorRT-LLM/examples/redrafter/
+# From the `examples/redrafter/` directory, run,
+python convert_checkpoint.py --base_model_checkpoint_dir $QWCKPTDIR \
+                             --drafter_model_dir $QWREDIR \
+                             --output_dir $QWRECKPTDIR_66 \
+                             --dtype float16 \
+                             --redrafter_num_beams 6 \
+                             --redrafter_draft_len_per_beam 6
+
+# Build trtllm engines from the trtllm checkpoint
+# Enable fp8 context fmha to get further acceleration by setting `--use_fp8_context_fmha enable`
+trtllm-build --checkpoint_dir $QWRECKPTDIR_66 \
+             --output_dir $QWRETRTDIR_66 \
+             --gemm_plugin fp8 \
+             --speculative_decoding_mode explicit_draft_tokens \
+             --max_beam_width 1 \
+             --max_batch_size 4
+
+
+python run.py --engine_dir $QWRETRTDIR \
+                 --tokenizer_dir $QWDIR \
+                 --max_output_len=100 \
+                 --input_text "Once upon" "The basic idea of a Transformer model is"
+
+
+
+
+```
+
+
+```
+cd /mount/data/pkgs/aimo2/v08
+# TensorRT-LLM uses git-lfs, which needs to be installed in advance.
+apt-get update && apt-get -y install git git-lfs
+git lfs install
+
+git clone https://github.com/darraghdog/TensorRT-LLM.git -b dh/aimo2_v01
+cd TensorRT-LLM
+git submodule update --init --recursive
+git lfs pull
+
+# See section `Install inside the PyTorch NGC Container`
+[ -f /etc/pip/constraint.txt ] && : > /etc/pip/constraint.txt
+pip uninstall -y tensorrt
+
+# https://nvidia.github.io/TensorRT-LLM/installation/build-from-source-linux.html#option-2-python-only-build-without-c-compilation
+TRTLLM_PRECOMPILED_LOCATION=https://pypi.nvidia.com/tensorrt-llm/tensorrt_llm-0.21.0rc0-cp312-cp312-linux_x86_64.whl pip install -e .
+TRTLLM_USE_PRECOMPILED=1 pip wheel . --no-deps --wheel-dir ./build --pre --extra-index-url https://pypi.nvidia.com
+
+
+
+math-dh-ngc-2501
+
+```
+
+
+
+```
 # To kill existing mpirun
 pkill -9 -f mpirun
 
@@ -344,4 +655,31 @@ tokenizer.pad_token_id = tokenizer.convert_tokens_to_ids('<|extra_0|>')
 
 # At the end
 pip install --upgrade  transformers==4.51.1
+
+
+vim /usr/local/lib/python3.12/dist-packages/nemo_skills/training/train_redrafter.py
+ns run_cmd --log_dir ./logs/ \
+torchrun --nproc_per_node=2 -m nemo_skills.training.train_redrafter \
+    --llm_name_or_path 'Qwen2.5-7B-Instruct' \
+    --dataset_name tttonyyy/DeepScale-qwen2.5_7b-multi_16k \
+    --dataset_split 'train' \
+    --bf16 True \
+    --output_dir "redrafter_" \
+    --num_train_epochs 6 \
+    --per_device_train_batch_size 1 \
+    --gradient_accumulation_steps 4 \
+    --save_strategy "no" \
+    --learning_rate 0.001 \
+    --weight_decay 0. \
+    --warmup_ratio 0.1 \
+    --lr_scheduler_type "cosine" \
+    --logging_steps 20 \
+    --tf32 True \
+    --model_max_length 2048 \
+    --dataset_nrows 400000 \
+    --drafter_predict_n_tokens 3 \
+    --drafter_num_layers 2 \
+    --rnn True \
+    --phase train \
+    --report_to wandb
 ```
