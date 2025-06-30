@@ -588,9 +588,9 @@ class CodeExecutionWrapper:
         remove_stop_phrases: bool = True,
         timeout: int | list[int] | None = None,
         max_code_executions: int | list[int] | None = None,
-        stream: bool = False,
         stop_after_n_completed=None, 
         stop_after_n_seconds=None,
+        stop_after_n_same_answer=None,
         ) -> list[dict]:
         """Process multiple streams concurrently and return results with durations."""
 
@@ -623,8 +623,9 @@ class CodeExecutionWrapper:
                 stop_after_n_completed = min(stop_after_n_completed, len(streams))
             
             start_time = time.time()
-            
-            completed_futures = []
+            current_answers = set() # set of answers that have been completed
+            completed_futures = []  # list of tuples (thread_id, result_data)
+
             while futures:
                 
                 if stop_after_n_completed is not None and len(completed_futures) >= stop_after_n_completed:
@@ -641,6 +642,17 @@ class CodeExecutionWrapper:
                     self.model.cancel_all_generations()
                     print("Collecting results up to now...")
                 
+                elif stop_after_n_same_answer is not None:
+                    # Check whether at least n elements in current_answers are the same
+                    if len(completed_futures) - len(current_answers) >= stop_after_n_same_answer-1:
+                        print(f"Stopping after {stop_after_n_same_answer} same answers...")
+                        # This will asynchronously cancel all generations
+                        # We don't break here because we want to collect results up to now
+                        self.model.cancel_all_generations()
+                        print("Collecting results up to now...")
+                
+                time.sleep(0.1)
+                
                 completed_in_this_iteration = []
                 for idx, future in futures:
                     if future.done():
@@ -654,7 +666,7 @@ class CodeExecutionWrapper:
                 for item in completed_in_this_iteration:
                     futures.remove(item)
                         
-                time.sleep(0.1)
+                
         
         # Sort by original index and return results with durations
         completed_futures.sort(key=lambda x: x[0])
