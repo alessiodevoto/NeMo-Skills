@@ -548,7 +548,7 @@ class CodeExecutionWrapper:
     
 
     @staticmethod
-    def consume_stream(stream, thread_id=None):
+    def _consume_stream(stream, thread_id=None):
         """Process a single stream and return concatenated text with timing."""
         start_time = time.time()
         result = ""
@@ -617,7 +617,7 @@ class CodeExecutionWrapper:
 
         with ThreadPoolExecutor() as executor:
             # Submit all streams to thread pool with thread IDs
-            futures = [(i, executor.submit(self.consume_stream, stream, i)) for i, stream in enumerate(streams)]
+            futures = [(i, executor.submit(self._consume_stream, stream, i)) for i, stream in enumerate(streams)]
             
             if stop_after_n_completed is not None:
                 stop_after_n_completed = min(stop_after_n_completed, len(streams))
