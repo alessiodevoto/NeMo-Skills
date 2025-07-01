@@ -24,8 +24,6 @@ pip3 install tensorrt_llm
 python -c 'import tensorrt_llm'
 ```
 
-
-
 We also install Nemo-Skills.
 ```
 pip install git+https://github.com/alessiodevoto/NeMo-Skills.git@aimo-inference
@@ -109,7 +107,7 @@ calib_ds.to_parquet(f"{LOCAL_DATASET_PATH}/data.parquet")
 Now that our dataset is saved, let start calibration and conversion to `TensorRT-LLM` engine format. There are two steps run here, quantisation of the weights and saving them to a `TensorRT-LLM` pytorch checkpoint, and building the checkpoint into an C++ engine. You can also run the individual steps by following the `examples/models/` folder in `TensorRT-LLM` repo and looking at the options for each architecture.
 
 Now lets start quantisation and calibration. The detailed steps are listed in TensorRT-LLM for different architectures, but here we will use a help command from NeMo-Skills.
-Setting `--num_gpus 2` applies tensort pararallelism over the two gpu case in our environment. Teh
+Setting `--num_gpus 1` uses no tensor parallelism. If you have more gpus, for example 4, set `--num_gpus 4` in the below, as well as `--tp_size 4` and `--server_gpus=1`.
 
 ```
 ns convert --input_model  OpenMath-Nemotron-14B-kaggle \
@@ -120,6 +118,9 @@ ns convert --input_model  OpenMath-Nemotron-14B-kaggle \
            --dtype fp8 \
            --hf_model_name nvidia/OpenMath-Nemotron-14B-kaggle \
            --model_type qwen \
+           --max_input_len 30000 \
+           --max_seq_len 32000 \
+           --no-trt_reuse_tmp_engine \
            --calib_dataset calibrate_openmathreasoning
 ```
 Now your engine is ready to be served.
@@ -130,7 +131,9 @@ Now your engine is ready to be served.
 
 ### ReDrafter Training
 
-To train ReDrafter for the `OpenMath-Nemotron-1.5B` model we run the below. We train below on the same dataset the model was trained on. If this data is not available the redrafter could alternatively be trained on prompts and generations form your model. Feel free to test different parameters, however we found 20k samples or more was sufficent to train a good ReDrafter.
+To train ReDrafter for the `OpenMath-Nemotron-1.5B` model we run the below. Training is not dependant on `tensorrt_llm`. We train below on the same dataset the model was trained on. If this data is not available the redrafter could alternatively be trained on prompts and generations from your model. Feel free to test different parameters, however we found 20k samples or more was sufficent to train a good ReDrafter.
+
+Below is a helper command which uses the `OpenMathReasoning` dataset. Export your `WANDB_API_KEY` if you have experiment tracking.
 ```
 # Install the ReDrafter library, we are on a later version of python so can ignore that check.
 pip install --no-binary=protobuf --ignore-requires-python \
@@ -139,7 +142,9 @@ pip install --no-binary=protobuf --ignore-requires-python \
 # Train
 ns run_cmd --log_dir ./logs/ \
 torchrun --nproc_per_node=2 -m nemo_skills.training.train_redrafter \
-    --llm_name_or_path 'OpenMath-Nemotron-1.5B' \
+    --llm_name_or_path 'OpenMath-Nemotron-14B-kaggle' \
+    --dataset "nvidia/OpenMathReasoning" \
+    --dataset_split "tir" \
     --bf16 True \
     --output_dir "redrafter_" \
     --num_train_epochs 1 \
@@ -172,13 +177,11 @@ Below is an example of the acceptance rate during training. Note, as we only use
 ![ReDrafter training](../figs/redrafter_training.png)
 
 
-
-
 ### Building TensorRT-LLM engine for draft model
 
 Clone `TensorRT-LLM` so we have the examples with conversion scripts.
 ```
-git clone https://github.com/NIVIDIA/TensorRT-LLM/
+git clone https://github.com/NVIDIA/TensorRT-LLM/
 ```
 When `NeMo-Skills` quantises a model we get a pytorch quantised checkpoint which is used to build the engine. We shall use this checkpoint to build a engine with `ReDrafter`. From the quantisation above, your checkpoint should be named something like, `OpenMath-Nemotron-14B-kaggle-fp8-trtllm-tmp-ckpt`.
 
