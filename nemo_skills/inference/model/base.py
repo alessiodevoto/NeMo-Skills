@@ -328,12 +328,11 @@ class OpenAIAPIModel(BaseModel):
             raise ValueError("No models available on the server.")
         return model_list.data[0].id
 
-    def _register_generation(self, gen_id: str, response: Any, is_streaming: bool = False) -> None:
+    def _register_generation(self, gen_id: str, response: Any) -> None:
         """Register a new generation with the tracker."""
         with self._generations_lock:
             self.active_generations[gen_id] = {
                 'response': response,
-                'is_streaming': is_streaming,
                 'created_at': time.time()
             }
 
@@ -350,15 +349,9 @@ class OpenAIAPIModel(BaseModel):
         generation_info = self._unregister_generation(gen_id)
         if generation_info is None:
             return False
-        
-        try:
-            response = generation_info['response']
-            if hasattr(response, 'close'):
-                response.close()
-            return True
-        except Exception as e:
-            LOG.warning("Error while cancelling generation %s: %s", gen_id, str(e))
-            return False
+
+        generation_info['response'].close() 
+        return True
 
     def cancel_all_generations(self) -> int:
         """
@@ -391,9 +384,10 @@ class OpenAIAPIModel(BaseModel):
         while True:
             try:
                 response = api_func(**params)
-                # Register the generation after successful API call
+                # Register the generation after successful API call, only for streaming responses
                 is_streaming = params.get('stream', False)
-                self._register_generation(gen_id, response, is_streaming)
+                if is_streaming:
+                    self._register_generation(gen_id, response)
                 return response
             except openai.RateLimitError as e:
                 retry_count += 1
@@ -452,30 +446,24 @@ class OpenAIAPIModel(BaseModel):
                 request_params = self._build_chat_request_params(messages=prompt, stream=stream, **kwargs)
                 response = self._make_api_call(self.client.chat.completions.create, request_params, gen_id)
                 if stream:
-                    wrapped_response = self._stream_chat_chunks(response, gen_id)
+                    result = self._stream_chat_chunks(response, gen_id)
                 else:
                     result = self._parse_chat_completion_response(response)
-                    # Unregister non-streaming generation immediately after parsing
-                    self._unregister_generation(gen_id)
-                    wrapped_response = result
 
             elif isinstance(prompt, str):
                 request_params = self._build_completion_request_params(prompt=prompt, stream=stream, **kwargs)
                 response = self._make_api_call(self.client.completions.create, request_params, gen_id)
                 if stream:
-                    wrapped_response = self._stream_completion_chunks(response, gen_id)
+                    result = self._stream_completion_chunks(response, gen_id)
                 else:
                     result = self._parse_completion_response(response)
-                    # Unregister non-streaming generation immediately after parsing
-                    self._unregister_generation(gen_id)
-                    wrapped_response = result
             else:
                 raise TypeError(f"Unsupported prompt type: {type(prompt)}")
             
             if return_gen_id:
-                return gen_id, wrapped_response
+                return gen_id, result
             else:
-                return wrapped_response
+                return result
                 
         except Exception as e:
             # Make sure to unregister the generation if an error occurs
@@ -574,10 +562,6 @@ class OpenAIAPIModel(BaseModel):
             # Always unregister the generation when streaming is complete
             self._unregister_generation(gen_id)
 
-    # Backward compatibility method
-    def close_active_api_calls(self):
-        """Deprecated: Use cancel_all_generations() instead."""
-        return self.cancel_all_generations()
 
 class BaseRewardModel(abc.ABC):
     """Base model class for handling requests to the reward model inference server.
