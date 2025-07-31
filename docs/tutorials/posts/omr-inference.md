@@ -22,6 +22,7 @@ By the end of this tutorial, you'll have a local setup capable of running effici
 - should we make the redrafter optional (not everyone might feel like training it)
 - decide where to place the scripts for inference (stream generate)
 - decide whether to keep the dataset creation script here or move it somewhere else
+- add link to Kaggle Notebook
 
 -----
 
@@ -298,8 +299,6 @@ llm = get_code_execution_model(server_type="trtllm-serve", sandbox=sandbox)
 print("Sandbox and LLM client initialized.")
 ```
 
-- We import several modules, including `get_sandbox` and `get_code_execution_model`, which are essential for setting up our environment.
-- The `get_sandbox()` function creates a secure environment where the code from the LLM will be executed.
 - `get_code_execution_model` creates a client that can communicate with our running LLM. We specify the `trtllm-serve` type to match the server we're using.
 
 
