@@ -20,6 +20,8 @@ By the end of this tutorial, you'll have a local setup capable of running effici
 ## TODOs
 - change the Nemo-Skills installation (rn points to my fork)
 - should we make the redrafter optional (not everyone might feel like training it)
+- decide where to place the scripts for inference (stream generate)
+- decide whether to keep the dataset creation script here or move it somewhere else
 
 -----
 
