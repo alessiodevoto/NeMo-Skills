@@ -261,21 +261,15 @@ Therefore, b = k - 7 = 21 or 49. So, same result. Therefore, sum is 70.\n\nAlter
 Use the `ns start_server` command to launch both the LLM server and the code execution sandbox simultaneously.
 
 ```bash
-mpirun -np 1 ns start_server \
+ns start_server \
     --model=./OpenMath-Nemotron-14B-kaggle-fp8-redrafter-trtllm/ \
-    --server_gpus=1 \
+    --server_gpus=2 \
     --server_type trtllm-serve \
     --server_args "--kv_cache_free_gpu_memory_fraction=0.92 --max_batch_size 12" \
     --with_sandbox
 ```
 
 Keep this terminal window open; the servers will run in the background.
-
------
-
-Here is a rewritten version of that section, with the code broken down and explained.
-
------
 
 ## 5\. Running Inference
 
