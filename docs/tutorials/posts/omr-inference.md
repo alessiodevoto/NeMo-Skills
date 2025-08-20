@@ -147,7 +147,7 @@ To push our inference efficiency further, we'll integrate [ReDrafter](https://ma
 
 ### Installing and Training ReDrafter
 
-First, install the ReDrafter library. Then, we'll train the ReDrafter model using the `OpenMath-Nemotron-1.5B` model as its base and the `OpenMathReasoning` dataset.
+First, install the ReDrafter library. To demonstrate, we'll train the ReDrafter model using the `OpenMath-Nemotron-1.5B` model as its base and the `OpenMathReasoning` dataset. The base model can be swapped out for whichever base model is used in inference. 
 
 ```bash
 # Install the ReDrafter library
