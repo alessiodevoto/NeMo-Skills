@@ -38,10 +38,10 @@ Once inside the `nvcr.io/nvidia/pytorch:25.05-py3` container, run the following 
 # Ensure no conflicting TensorRT installations and install TensorRT-LLM
 [ -f /etc/pip/constraint.txt ] && : > /etc/pip/constraint.txt
 pip uninstall -y tensorrt
-pip3 install tensorrt_llm
+pip3 install tensorrt_llm==1.1.0rc0
 
 # Install NeMo-Skills from the specified branch
-pip install git+https://github.com/alessiodevoto/NeMo-Skills.git@aimo-inference
+pip install git+https://github.com/NVIDIA/NeMo-Skills
 ```
 
 -----
