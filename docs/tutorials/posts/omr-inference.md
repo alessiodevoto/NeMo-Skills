@@ -18,7 +18,6 @@ By the end of this tutorial, you'll have a local setup capable of running effici
 5.  **Running Inference**: Finally, we'll send math problems to our custom inference engine and observe its problem-solving abilities.
 
 ## TODOs
-- change the Nemo-Skills installation (rn points to my fork)
 - should we make the redrafter optional (not everyone might feel like training it)
 - decide where to place the scripts for inference (stream generate)
 - decide whether to keep the dataset creation script here or move it somewhere else
@@ -29,6 +28,7 @@ By the end of this tutorial, you'll have a local setup capable of running effici
 ## 1\. Setting Up Your Environment
 
 Our first step is to establish a consistent and isolated environment. We'll use an NVIDIA PyTorch NGC container and install the essential libraries: TensorRT-LLM for model optimization and NeMo-Skills for the overall pipeline management.
+FP8 inference requires a GPU with which supports FP8 inference such as Ada Lovelace or Hopper architecture or later. For this example we assume two gpus are available. 
 
 ### Container Setup and Library Installation
 
@@ -127,7 +127,7 @@ ns convert \
     --output_model OpenMath-Nemotron-14B-kaggle-fp8-trtllm \
     --convert_from hf \
     --convert_to trtllm \
-    --num_gpus 1 \
+    --num_gpus 2 \
     --dtype fp8 \
     --hf_model_name nvidia/OpenMath-Nemotron-14B-kaggle \
     --model_type qwen \
@@ -206,7 +206,7 @@ python convert_checkpoint.py \
     --drafter_model_dir $REDRAFTER_PYTORCH_CKPT \
     --output_dir $REDRAFTER_TRTLLM_CKPT \
     --dtype bfloat16 \
-    --tp_size 1 \
+    --tp_size 2 \
     --redrafter_num_beams 1 \
     --redrafter_draft_len_per_beam 3
 cd ../../../
