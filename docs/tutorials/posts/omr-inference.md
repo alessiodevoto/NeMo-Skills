@@ -225,11 +225,30 @@ trtllm-build \
 
 Your TensorRT-LLM engine, now supercharged with ReDrafter, is ready to be served!
 
------
+## 4\. Benchmarking and results
 
-## 4\. Launching the Inference Servers
+We’ve prepared a [companion notebook](link) where you can try out the full pipeline yourself. The notebook was run with the same Container Setup and Library Installation as used above, along with 2 H100 gpus for inference. 
+In the notebook, you can:  
 
-Our LLM is a powerful tool-instruction reasoning model. This means it doesn't just generate text; it can also write and execute Python code in a secure sandbox to solve problems. This section details how to launch both the LLM server and its accompanying code execution sandbox.
+- Run inference on different TensorRT-LLM engines (BF16, FP8, FP8+ReDrafter).  
+- Compare performance benchmarks such as **time-to-first-token** and **throughput per device**.  
+- Explore advanced controls like **early stopping after a fixed time** or **terminating after the first N generations complete**.
+- Run inference with tool-calling. 
+
+Here’s a sample of the kind of benchmark results you’ll see:  
+
+| Metric                        | FP8+ReDrafter | FP8   | BF16  |
+|-------------------------------|---------------|-------|-------|
+| Total Generation Time (s)     | 33.8          | 72.9  |  170.4 |
+| Batch Throughput (Tok/sec)          | 2036          | 1029   | 518   |
+| Average Sample Throughput (Tok/s) | 176           | 90    | 44    |
+
+*(full benchmarks and code available in the notebook)*  
+
+
+## 5\. Optional: Enabling tool-calling and the code execution sandbox
+
+Our LLM is a powerful tool-instruction reasoning model. This means it doesn't just generate text; it can also write and execute Python code in a secure sandbox to solve problems. Below we provide an example how to launch both the LLM server and its accompanying code execution sandbox.
 
 The interaction works like this:
 
@@ -239,30 +258,10 @@ The interaction works like this:
 4.  The output is fed back to the LLM for continued generation or to finalize its answer.
 
 Here's an example of such an interaction:
-Here's an example of such an interaction:
 <details><summary><b>Show Example Output</b></summary>
 
 ```bash
 Therefore, b = k - 7 = 21 or 49. So, same result. Therefore, sum is 70.\n\nAlternatively, maybe I can write a small program to check for all bases b > 9, compute 9b + 7 and b + 7, check if the latter divides the former, and collect all such bases. Then sum them. Let\'s do that to verify.\n\nHere\'s a Python code to perform the check:\n\n<tool_call>\n# Initialize a list to store valid bases\nvalid_bases = []\n\n# Check bases from 10 upwards\nfor b in range(10, 10000):  # Arbitrary large upper limit\n    num1 = 9 * b + 7\n    num2 = b + 7\n    if num1 % num2 == 0:\n        valid_bases.append(b)\n        print(f"Found base: {b}")\n\n# Sum the valid bases\nsum_bases = sum(valid_bases)\nprint(f"Sum: {sum_bases}")\n\n# If sum is over 1000, take modulo 1000\nif sum_bases > 1000:\n    result = sum_bases % 1000\nelse:\n    result = sum_bases\n\nprint(f"Final Result: {result}")\n</tool_call>\n```output\nFound base: 21\nFound base: 49\nSum: 70\nFinal Result: 70\n```\nThe code confirms that the valid bases are 21 and 49, summing to 70.
 ```
 
-</details>
-
-We’ve prepared a [companion notebook](link) where you can try out the full pipeline yourself. The notebook was run with the same Container Setup and Library Installation as used above, along with 2 H100 gpus for inference. 
-In the notebook, you can:  
-
-- Run inference on different TensorRT-LLM engines (BF16, FP8, FP8+ReDrafter).  
-- Compare performance benchmarks such as **time-to-first-token** and **throughput per device**.  
-- Explore advanced controls like **early stopping after a fixed time** or **terminating after the first N generations complete**.
-- Run inference calling code execution. 
-
-Here’s a sample of the kind of benchmark results you’ll see:  
-
-| Metric                        | FP8+ReDrafter | FP8   | BF16  |
-|-------------------------------|---------------|-------|-------|
-| Total Generation Time (s)     | 33.8          | 73.8  | 170.7 |
-| Time to First Token (s)       | 0.29          | 0.23  | 0.16  |
-| Throughput (Tok/sec)          | 2036          | 1017  | 518   |
-| Throughput per Device (Tok/s) | 176           | 90    | 44    |
-
-*(full benchmarks and code available in the notebook)*  
+To turn off tool-calling in the [companion notebook](link) use `get_model` instead of `get_code_execution_model` as shown in the NeMo-Skills [docs](https://nvidia.github.io/NeMo-Skills/). 
