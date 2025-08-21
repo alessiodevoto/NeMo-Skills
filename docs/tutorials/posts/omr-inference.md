@@ -143,7 +143,7 @@ After this command, your main LLM engine is ready for deployment.
 
 ## 3\. Accelerating Inference with ReDrafter
 
-To push our inference efficiency further, we'll integrate [ReDrafter](https://machinelearning.apple.com/research/redrafter-nvidia-tensorrt-llm). This speculative decoding technique uses a smaller "draft" model to predict tokens, allowing the main LLM to generate responses much faster.
+To push our inference efficiency further, we'll integrate [ReDrafter](https://machinelearning.apple.com/research/redrafter-nvidia-tensorrt-llm). This speculative decoding technique uses a smaller "draft" model to predict tokens, allowing the main LLM to generate responses much faster. ReDrafter is an RNN based inference technique developed by Apple. [In TensorRT-LLM](https://github.com/NVIDIA/TensorRT-LLM/tree/main/examples/redrafter) it is compatible with most models supported within Tensorrt-LLM.
 
 ### Installing and Training ReDrafter
 
