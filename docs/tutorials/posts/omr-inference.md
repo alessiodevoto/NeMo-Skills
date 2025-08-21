@@ -6,7 +6,7 @@ readtime: 20
 # Building an Efficient Inference Engine for Math Problems
 
 This tutorial guides you through creating a high-performance inference engine using [NeMo-Skills](https://nvidia.github.io/NeMo-Skills/) to tackle complex math problems and beyond. We'll leverage [TensorRT-LLM](https://github.com/NVIDIA/TensorRT-LLM) for optimized model serving, including an advanced technique called ReDrafter for speculative decoding.  
-With FP8 quantization and ReDrafter speculative decoding, we achieved up to 4× faster inference compared to BF16.
+With FP8 quantization and ReDrafter speculative decoding, we achieved up to 5× faster inference compared to BF16.
 
 By the end of this tutorial, you'll have a local setup capable of running efficient inference with a large language model (LLM) integrated with a code execution sandbox. This setup is a simplified version of the pipeline that achieved success in the AIMO24 competition.
 
@@ -43,7 +43,7 @@ pip install git+https://github.com/NVIDIA/NeMo-Skills.git@dc32d6a
 
 Now that our environment is ready, the next step is to prepare our Large Language Model (LLM). We'll download the `nvidia/OpenMath-Nemotron-14B-Kaggle` model and transform it into an optimized TensorRT-LLM engine using FP8 quantization. This process significantly improves inference speed and efficiency.
 
-**Note on FP8 Quantization:** FP8 (8-bit floating point) quantization is highly efficient but requires GPUs that support `E4M3 FP8` (like NVIDIA Hopper GPUs). For other GPUs, `int8_wo` (8-bit integer with weight-only quantization) is recommended and doesn't require calibration.
+**Note on FP8 Quantization:** FP8 (8-bit floating point) quantization is highly efficient but requires GPUs that support `E4M3 FP8` (like NVIDIA Hopper GPUs). For other GPUs, `int8_wo` (8-bit integer with weight-only quantization) is recommended and does not require calibration.
 
 ### Downloading Model Weights and Dataset
 
@@ -141,6 +141,7 @@ To push our inference efficiency further, we'll integrate [ReDrafter](https://ma
 ### Installing and Training ReDrafter
 
 First, install the ReDrafter library. To demonstrate, we'll train the ReDrafter model using the `OpenMath-Nemotron-1.5B` model as its base and the `OpenMathReasoning` dataset. The base model used below in training, `OpenMath-Nemotron-1.5B`, can be swapped out for whichever base model is used during inference. 
+In the below example the tokenizer and training data for the draft model is the same as used for the base model. If this data is not available, base model generations can also be used for training the draft model. 
 
 ```bash
 # Install the ReDrafter library
@@ -244,17 +245,19 @@ The interaction works like this:
 4.  The output is fed back to the LLM for continued generation or to finalize its answer.
 
 Here's an example of such an interaction:
-
+<details><summary><b>Show Example Output</b></summary>
 ````bash
 Therefore, b = k - 7 = 21 or 49. So, same result. Therefore, sum is 70.\n\nAlternatively, maybe I can write a small program to check for all bases b > 9, compute 9b + 7 and b + 7, check if the latter divides the former, and collect all such bases. Then sum them. Let\'s do that to verify.\n\nHere\'s a Python code to perform the check:\n\n<tool_call>\n# Initialize a list to store valid bases\nvalid_bases = []\n\n# Check bases from 10 upwards\nfor b in range(10, 10000):  # Arbitrary large upper limit\n    num1 = 9 * b + 7\n    num2 = b + 7\n    if num1 % num2 == 0:\n        valid_bases.append(b)\n        print(f"Found base: {b}")\n\n# Sum the valid bases\nsum_bases = sum(valid_bases)\nprint(f"Sum: {sum_bases}")\n\n# If sum is over 1000, take modulo 1000\nif sum_bases > 1000:\n    result = sum_bases % 1000\nelse:\n    result = sum_bases\n\nprint(f"Final Result: {result}")\n</tool_call>\n```output\nFound base: 21\nFound base: 49\nSum: 70\nFinal Result: 70\n```\nThe code confirms that the valid bases are 21 and 49, summing to 70.
 ````
+</details>
 
-We’ve prepared a [companion notebook](link) where you can try out the full pipeline yourself.  
+We’ve prepared a [companion notebook](link) where you can try out the full pipeline yourself. The notebook was run with the same Container Setup and Library Installation as used above, along with 2 H100 gpus for inference. 
 In the notebook, you can:  
 
 - Run inference on different TensorRT-LLM engines (BF16, FP8, FP8+ReDrafter).  
 - Compare performance benchmarks such as **time-to-first-token** and **throughput per device**.  
-- Explore advanced controls like **early stopping after a fixed time** or **terminating after the first N generations complete**.  
+- Explore advanced controls like **early stopping after a fixed time** or **terminating after the first N generations complete**.
+- Run inference calling code execution. 
 
 Here’s a sample of the kind of benchmark results you’ll see:  
 
