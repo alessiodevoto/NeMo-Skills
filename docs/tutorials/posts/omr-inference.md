@@ -66,7 +66,7 @@ pip install -U "huggingface_hub[cli]"
 # Download the 14B parameter main model
 huggingface-cli download nvidia/OpenMath-Nemotron-14B-kaggle --local-dir OpenMath-Nemotron-14B-kaggle
 
-# Download a smaller model for ReDrafter training
+# Download a smaller model to demo ReDrafter training
 huggingface-cli download nvidia/OpenMath-Nemotron-1.5B --local-dir OpenMath-Nemotron-1.5B
 
 # Download the OpenMathReasoning dataset for calibration
@@ -147,7 +147,7 @@ To push our inference efficiency further, we'll integrate [ReDrafter](https://ma
 
 ### Installing and Training ReDrafter
 
-First, install the ReDrafter library. To demonstrate, we'll train the ReDrafter model using the `OpenMath-Nemotron-1.5B` model as its base and the `OpenMathReasoning` dataset. The base model can be swapped out for whichever base model is used in inference. 
+First, install the ReDrafter library. To demonstrate, we'll train the ReDrafter model using the `OpenMath-Nemotron-1.5B` model as its base and the `OpenMathReasoning` dataset. The base model used below in training, `OpenMath-Nemotron-1.5B`, can be swapped out for whichever base model is used during inference. 
 
 ```bash
 # Install the ReDrafter library
