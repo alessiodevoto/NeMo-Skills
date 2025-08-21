@@ -5,10 +5,11 @@ readtime: 20
 
 # Building an Efficient Inference Engine for Math Problems
 
-This tutorial guides you through creating a high-performance inference engine using [NeMo-Skills](https://nvidia.github.io/NeMo-Skills/) to tackle complex math problems and beyond. We'll leverage [TensorRT-LLM](https://github.com/NVIDIA/TensorRT-LLM) for optimized model serving, including an advanced technique called ReDrafter for speculative decoding.  
-With FP8 quantization and ReDrafter speculative decoding, we achieved up to 5× faster inference compared to BF16.
+This tutorial guides you through creating a high-performance inference engine using [NeMo-Skills](https://nvidia.github.io/NeMo-Skills/) to tackle complex math problems. It demonstrates the inference pipeline used to win the [AIMO24 competition](https://www.kaggle.com/competitions/ai-mathematical-olympiad-progress-prize-2/writeups/nemoskills-1st-place-solution-nemoskills). With FP8 quantization and ReDrafter speculative decoding, we achieved up to 5× faster inference compared to BF16. 
 
-By the end of this tutorial, you'll have a local setup capable of running efficient inference with a large language model (LLM) integrated with a code execution sandbox. This setup is a simplified version of the pipeline that achieved success in the AIMO24 competition.
+We will leverage [TensorRT-LLM](https://github.com/NVIDIA/TensorRT-LLM) for optimized model serving, including an advanced technique called ReDrafter for speculative decoding.  
+
+By the end of this tutorial, you'll have a local setup capable of running efficient inference with a large language model (LLM) integrated with a code execution sandbox. 
 
 ## What We'll Cover
 
@@ -17,6 +18,8 @@ By the end of this tutorial, you'll have a local setup capable of running effici
 3.  **Accelerating Inference with ReDrafter**: Discover ReDrafter, a speculative decoding technique, train a draft model, and integrate it into our TensorRT-LLM engine for faster generation.
 4.  **Launching the Inference Server**: Set up the LLM server and a parallel code execution sandbox to handle the tool-use capabilities of our model.
 5.  **Running Inference**: Finally, we'll send math problems to our custom inference engine and observe its problem-solving abilities.
+
+See the [companion notebook](link) for launching the inference server and benchmarking. 
 
 ## 1\. Setting Up Your Environment
 
@@ -41,7 +44,7 @@ pip install git+https://github.com/NVIDIA/NeMo-Skills.git@dc32d6a
 
 ## 2\. Preparing Model Weights
 
-Now that our environment is ready, the next step is to prepare our Large Language Model (LLM). We'll download the `nvidia/OpenMath-Nemotron-14B-Kaggle` model and transform it into an optimized TensorRT-LLM engine using FP8 quantization. This process significantly improves inference speed and efficiency.
+Now that our environment is ready, the next step is to prepare our Large Language Model (LLM). We'll download the `nvidia/OpenMath-Nemotron-14B-Kaggle` model and transform it into an optimized TensorRT-LLM engine using FP8 quantization. 
 
 **Note on FP8 Quantization:** FP8 (8-bit floating point) quantization is highly efficient but requires GPUs that support `E4M3 FP8` (like NVIDIA Hopper GPUs). For other GPUs, `int8_wo` (8-bit integer with weight-only quantization) is recommended and does not require calibration.
 
@@ -68,7 +71,7 @@ huggingface-cli download nvidia/OpenMathReasoning --repo-type dataset --local-di
 
 ### Preparing the Calibration Dataset for FP8 Quantization
 
-For FP8 quantization, a small calibration dataset is essential. We'll use a subset of the `OpenMathReasoning` dataset to create it. Save the following as `prepare_calibration_data.py`:
+For FP8 quantization, a small calibration dataset representative of inference data is essential. We'll use a subset of the `OpenMathReasoning` dataset to create it. Save the following as `prepare_calibration_data.py`:
 
 ```python
 import os
@@ -112,7 +115,7 @@ python prepare_calibration_data.py
 
 ### Converting and Quantizing to TensorRT-LLM Engine
 
-Now, convert the Hugging Face model to a TensorRT-LLM engine, applying FP8 quantization and using the prepared calibration dataset. This step generates the highly quantized LLM inference engine.
+Now, convert the Hugging Face model to a TensorRT-LLM engine, applying FP8 quantization and using the prepared calibration dataset. This step generates the FP8 quantized LLM inference engine.
 
 ```bash
 ns convert \
@@ -130,13 +133,11 @@ ns convert \
     --calib_dataset ./calibration_dataset
 ```
 
-After this command, your main LLM engine is ready for deployment.
-
------
+After this command, your FP8 LLM engine is ready for deployment.
 
 ## 3\. Accelerating Inference with ReDrafter
 
-To push our inference efficiency further, we'll integrate [ReDrafter](https://machinelearning.apple.com/research/redrafter-nvidia-tensorrt-llm). This speculative decoding technique uses a smaller "draft" model to predict tokens, allowing the main LLM to generate responses much faster. ReDrafter is an RNN based inference technique developed by Apple. [In TensorRT-LLM](https://github.com/NVIDIA/TensorRT-LLM/tree/main/examples/redrafter) it is compatible with most models supported within Tensorrt-LLM.
+To push our inference efficiency further, we will integrate [ReDrafter](https://machinelearning.apple.com/research/redrafter-nvidia-tensorrt-llm). This speculative decoding technique uses a smaller "draft" model to predict tokens, allowing the main LLM to generate responses much faster. ReDrafter is an RNN based inference method developed by Apple. In [TensorRT-LLM](https://github.com/NVIDIA/TensorRT-LLM/tree/main/examples/redrafter) it is compatible with most models supported within Tensorrt-LLM.
 
 ### Installing and Training ReDrafter
 
