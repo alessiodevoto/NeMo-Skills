@@ -1,13 +1,15 @@
 ---
-date: 2025-08-01
+date: 2025-08-21
 readtime: 20
 ---
 
 # Building an Efficient Inference Engine for Math Problems
 
-This tutorial guides you through creating a high-performance inference engine using [NeMo-Skills](https://nvidia.github.io/NeMo-Skills/) to tackle complex math problems. We'll leverage [TensorRT-LLM](https://github.com/NVIDIA/TensorRT-LLM) for optimized model serving, including an advanced technique called ReDrafter for speculative decoding.
+This tutorial guides you through creating a high-performance inference engine using [NeMo-Skills](https://nvidia.github.io/NeMo-Skills/) to tackle complex math problems. It demonstrates the inference pipeline used to win the [AIMO24 competition](https://www.kaggle.com/competitions/ai-mathematical-olympiad-progress-prize-2/writeups/nemoskills-1st-place-solution-nemoskills). With FP8 quantization and ReDrafter speculative decoding, we achieved up to 5× faster inference compared to BF16. 
 
-By the end of this tutorial, you'll have a local setup capable of running efficient inference with a large language model (LLM) integrated with a code execution sandbox. This setup is a simplified version of the pipeline that achieved success in the AIMO24 competition.
+We will leverage [TensorRT-LLM](https://github.com/NVIDIA/TensorRT-LLM) for optimized model serving, including an advanced technique called ReDrafter for speculative decoding.  
+
+By the end of this tutorial, you'll have a local setup capable of running efficient inference with a large language model (LLM) integrated with a code execution sandbox. 
 
 ## What We'll Cover
 
@@ -17,18 +19,12 @@ By the end of this tutorial, you'll have a local setup capable of running effici
 4.  **Launching the Inference Server**: Set up the LLM server and a parallel code execution sandbox to handle the tool-use capabilities of our model.
 5.  **Running Inference**: Finally, we'll send math problems to our custom inference engine and observe its problem-solving abilities.
 
-## TODOs
-- change the Nemo-Skills installation (rn points to my fork)
-- should we make the redrafter optional (not everyone might feel like training it)
-- decide where to place the scripts for inference (stream generate)
-- decide whether to keep the dataset creation script here or move it somewhere else
-- add link to Kaggle Notebook
-
------
+See the [companion notebook](link) for launching the inference server and benchmarking. 
 
 ## 1\. Setting Up Your Environment
 
 Our first step is to establish a consistent and isolated environment. We'll use an NVIDIA PyTorch NGC container and install the essential libraries: TensorRT-LLM for model optimization and NeMo-Skills for the overall pipeline management.
+FP8 inference requires a GPU with which supports FP8 inference such as Ada Lovelace or Hopper architecture or later. For this example we assume two gpus are available. 
 
 ### Container Setup and Library Installation
 
@@ -38,19 +34,19 @@ Once inside the `nvcr.io/nvidia/pytorch:25.05-py3` container, run the following 
 # Ensure no conflicting TensorRT installations and install TensorRT-LLM
 [ -f /etc/pip/constraint.txt ] && : > /etc/pip/constraint.txt
 pip uninstall -y tensorrt
-pip3 install tensorrt_llm
+pip3 install tensorrt_llm==1.1.0rc0
 
 # Install NeMo-Skills from the specified branch
-pip install git+https://github.com/alessiodevoto/NeMo-Skills.git@aimo-inference
+pip install git+https://github.com/NVIDIA/NeMo-Skills.git@dc32d6a
 ```
 
 -----
 
 ## 2\. Preparing Model Weights
 
-Now that our environment is ready, the next step is to prepare our Large Language Model (LLM). We'll download the `nvidia/OpenMath-Nemotron-14B-Kaggle` model and transform it into an optimized TensorRT-LLM engine using FP8 quantization. This process significantly improves inference speed and efficiency.
+Now that our environment is ready, the next step is to prepare our Large Language Model (LLM). We'll download the `nvidia/OpenMath-Nemotron-14B-Kaggle` model and transform it into an optimized TensorRT-LLM engine using FP8 quantization. 
 
-**Note on FP8 Quantization:** FP8 (8-bit floating point) quantization is highly efficient but requires GPUs that support `E4M3 FP8` (like NVIDIA Hopper GPUs). For other GPUs, `int8_wo` (8-bit integer with weight-only quantization) is recommended and doesn't require calibration.
+**Note on FP8 Quantization:** FP8 (8-bit floating point) quantization is highly efficient but requires GPUs that support `E4M3 FP8` (like NVIDIA Hopper GPUs). For other GPUs, `int8_wo` (8-bit integer with weight-only quantization) is recommended and does not require calibration.
 
 ### Downloading Model Weights and Dataset
 
@@ -66,7 +62,7 @@ pip install -U "huggingface_hub[cli]"
 # Download the 14B parameter main model
 huggingface-cli download nvidia/OpenMath-Nemotron-14B-kaggle --local-dir OpenMath-Nemotron-14B-kaggle
 
-# Download a smaller model for ReDrafter training
+# Download a smaller model to demo ReDrafter training
 huggingface-cli download nvidia/OpenMath-Nemotron-1.5B --local-dir OpenMath-Nemotron-1.5B
 
 # Download the OpenMathReasoning dataset for calibration
@@ -75,7 +71,7 @@ huggingface-cli download nvidia/OpenMathReasoning --repo-type dataset --local-di
 
 ### Preparing the Calibration Dataset for FP8 Quantization
 
-For FP8 quantization, a small calibration dataset is essential. We'll use a subset of the `OpenMathReasoning` dataset to create it. Save the following as `prepare_calibration_data.py`:
+For FP8 quantization, a small calibration dataset representative of inference data is essential. We'll use a subset of the `OpenMathReasoning` dataset to create it. Save the following as `prepare_calibration_data.py`:
 
 ```python
 import os
@@ -119,7 +115,7 @@ python prepare_calibration_data.py
 
 ### Converting and Quantizing to TensorRT-LLM Engine
 
-Now, convert the Hugging Face model to a TensorRT-LLM engine, applying FP8 quantization and using the prepared calibration dataset. This step generates the highly quantized LLM inference engine.
+Now, convert the Hugging Face model to a TensorRT-LLM engine, applying FP8 quantization and using the prepared calibration dataset. This step generates the FP8 quantized LLM inference engine.
 
 ```bash
 ns convert \
@@ -127,7 +123,7 @@ ns convert \
     --output_model OpenMath-Nemotron-14B-kaggle-fp8-trtllm \
     --convert_from hf \
     --convert_to trtllm \
-    --num_gpus 1 \
+    --num_gpus 2 \
     --dtype fp8 \
     --hf_model_name nvidia/OpenMath-Nemotron-14B-kaggle \
     --model_type qwen \
@@ -137,17 +133,16 @@ ns convert \
     --calib_dataset ./calibration_dataset
 ```
 
-After this command, your main LLM engine is ready for deployment.
-
------
+After this command, your FP8 LLM engine is ready for deployment.
 
 ## 3\. Accelerating Inference with ReDrafter
 
-To push our inference efficiency further, we'll integrate [ReDrafter](https://machinelearning.apple.com/research/redrafter-nvidia-tensorrt-llm). This speculative decoding technique uses a smaller "draft" model to predict tokens, allowing the main LLM to generate responses much faster.
+To push our inference efficiency further, we will integrate [ReDrafter](https://machinelearning.apple.com/research/redrafter-nvidia-tensorrt-llm). This speculative decoding technique uses a smaller "draft" model to predict tokens, allowing the main LLM to generate responses much faster. ReDrafter is an RNN based inference method developed by Apple. In [TensorRT-LLM](https://github.com/NVIDIA/TensorRT-LLM/tree/main/examples/redrafter) it is compatible with most models supported within Tensorrt-LLM.
 
 ### Installing and Training ReDrafter
 
-First, install the ReDrafter library. Then, we'll train the ReDrafter model using the `OpenMath-Nemotron-1.5B` model as its base and the `OpenMathReasoning` dataset.
+First, install the ReDrafter library. To demonstrate, we'll train the ReDrafter model using the `OpenMath-Nemotron-1.5B` model as its base and the `OpenMathReasoning` dataset. The base model used below in training, `OpenMath-Nemotron-1.5B`, can be swapped out for whichever base model is used during inference. 
+In the below example the tokenizer and training data for the draft model is the same as used for the base model. If this data is not available, base model generations can also be used for training the draft model. 
 
 ```bash
 # Install the ReDrafter library
@@ -206,7 +201,7 @@ python convert_checkpoint.py \
     --drafter_model_dir $REDRAFTER_PYTORCH_CKPT \
     --output_dir $REDRAFTER_TRTLLM_CKPT \
     --dtype bfloat16 \
-    --tp_size 1 \
+    --tp_size 2 \
     --redrafter_num_beams 1 \
     --redrafter_draft_len_per_beam 3
 cd ../../../
@@ -229,19 +224,32 @@ trtllm-build \
     --kv_cache_type paged
 ```
 
-Complete the setup by copying the tokenizer files:
+Your TensorRT-LLM engine, now supercharged with ReDrafter, is ready to be served!
 
-```bash
-cp OpenMath-Nemotron-14B-kaggle/*tok* OpenMath-Nemotron-14B-kaggle-fp8-redrafter-trtllm/
-```
+## 4\. Benchmarking and results
 
-Your TensorRT-LLM engine, now supercharged with ReDrafter, is ready to be served\!
+We’ve prepared a [companion notebook](link) where you can try out the full pipeline yourself. The notebook was run with the same container setup and installations as section 1 above, along with 2 H100 gpus for inference. 
+In the notebook, you can:  
 
------
+- Run inference on different TensorRT-LLM engines (BF16, FP8, FP8+ReDrafter).  
+- Compare performance benchmarks such as **time-to-first-token** and **throughput per device**.  
+- Explore advanced controls like **early stopping after a fixed time** or **terminating after the first N generations complete**.
+- Run inference with tool-calling. 
 
-## 4\. Launching the Inference Servers
+Here’s a sample of the kind of benchmark results you’ll see:  
 
-Our LLM is a powerful tool-instruction reasoning model. This means it doesn't just generate text; it can also write and execute Python code in a secure sandbox to solve problems. This section details how to launch both the LLM server and its accompanying code execution sandbox.
+| Metric                        | FP8+ReDrafter | FP8   | BF16  |
+|-------------------------------|---------------|-------|-------|
+| Total Generation Time (s)     | 33.8          | 72.9  |  170.4 |
+| Batch Throughput (Tok/sec)          | 2036          | 1029   | 518   |
+| Average Sample Throughput (Tok/s) | 175.7           | 89.9    | 44.1    |
+
+*(full benchmarks and code available in the notebook)*  
+
+
+## 5\. Optional: Enabling tool-calling and the code execution sandbox
+
+Our LLM is a powerful tool-instruction reasoning model. This means it doesn't just generate text; it can also write and execute Python code in a secure sandbox to solve problems. Below we provide an example how to launch both the LLM server and its accompanying code execution sandbox.
 
 The interaction works like this:
 
@@ -251,117 +259,10 @@ The interaction works like this:
 4.  The output is fed back to the LLM for continued generation or to finalize its answer.
 
 Here's an example of such an interaction:
-
-````bash
-Therefore, b = k - 7 = 21 or 49. So, same result. Therefore, sum is 70.\n\nAlternatively, maybe I can write a small program to check for all bases b > 9, compute 9b + 7 and b + 7, check if the latter divides the former, and collect all such bases. Then sum them. Let\'s do that to verify.\n\nHere\'s a Python code to perform the check:\n\n<tool_call>\n# Initialize a list to store valid bases\nvalid_bases = []\n\n# Check bases from 10 upwards\nfor b in range(10, 10000):  # Arbitrary large upper limit\n    num1 = 9 * b + 7\n    num2 = b + 7\n    if num1 % num2 == 0:\n        valid_bases.append(b)\n        print(f"Found base: {b}")\n\n# Sum the valid bases\nsum_bases = sum(valid_bases)\nprint(f"Sum: {sum_bases}")\n\n# If sum is over 1000, take modulo 1000\nif sum_bases > 1000:\n    result = sum_bases % 1000\nelse:\n    result = sum_bases\n\nprint(f"Final Result: {result}")\n</tool_call>\n```output\nFound base: 21\nFound base: 49\nSum: 70\nFinal Result: 70\n```\nThe code confirms that the valid bases are 21 and 49, summing to 70.
-````
-
-### Starting the LLM and Sandbox Servers
-
-Use the `ns start_server` command to launch both the LLM server and the code execution sandbox simultaneously.
+<details><summary><b>Show Example Output</b></summary>
 
 ```bash
-mpirun -np 1 ns start_server \
-    --model=./OpenMath-Nemotron-14B-kaggle-fp8-redrafter-trtllm/ \
-    --server_gpus=1 \
-    --server_type trtllm-serve \
-    --server_args "--kv_cache_free_gpu_memory_fraction=0.92 --max_batch_size 12" \
-    --with_sandbox
+Therefore, b = k - 7 = 21 or 49. So, same result. Therefore, sum is 70.\n\nAlternatively, maybe I can write a small program to check for all bases b > 9, compute 9b + 7 and b + 7, check if the latter divides the former, and collect all such bases. Then sum them. Let\'s do that to verify.\n\nHere\'s a Python code to perform the check:\n\n<tool_call>\n# Initialize a list to store valid bases\nvalid_bases = []\n\n# Check bases from 10 upwards\nfor b in range(10, 10000):  # Arbitrary large upper limit\n    num1 = 9 * b + 7\n    num2 = b + 7\n    if num1 % num2 == 0:\n        valid_bases.append(b)\n        print(f"Found base: {b}")\n\n# Sum the valid bases\nsum_bases = sum(valid_bases)\nprint(f"Sum: {sum_bases}")\n\n# If sum is over 1000, take modulo 1000\nif sum_bases > 1000:\n    result = sum_bases % 1000\nelse:\n    result = sum_bases\n\nprint(f"Final Result: {result}")\n</tool_call>\n```output\nFound base: 21\nFound base: 49\nSum: 70\nFinal Result: 70\n```\nThe code confirms that the valid bases are 21 and 49, summing to 70.
 ```
 
-Keep this terminal window open; the servers will run in the background.
-
------
-
-Here is a rewritten version of that section, with the code broken down and explained.
-
------
-
-## 5\. Running Inference
-
-With our LLM and sandbox servers operational, we're ready for the final step: sending math problems to our powerful inference engine and observing its answers. NeMo-Skills provides convenient utility functions to interact with our hosted servers.
-
-First, we'll initialize the necessary components to run our inference. This code sets up the sandbox environment and connects to the LLM server.
-
-```python
-import copy
-from nemo_skills.inference.server.code_execution_model import CodeTags, get_code_execution_model
-from nemo_skills.inference.server.server_utils import get_sandbox, stream_generate
-from nemo_skills.prompt.utils import get_prompt
-from datasets import load_dataset
-import pandas as pd
-from itertools import islice
-
-# 1. Initialize the Sandbox and LLM Client
-print("Initializing sandbox and LLM client...")
-sandbox = get_sandbox()
-llm = get_code_execution_model(server_type="trtllm-serve", sandbox=sandbox)
-print("Sandbox and LLM client initialized.")
-```
-
-- `get_code_execution_model` creates a client that can communicate with our running LLM. We specify the `trtllm-serve` type to match the server we're using.
-
-
-Next, we'll configure the prompt template and define the specific tags that the LLM will use to identify code blocks. This is how the LLM knows what part of its output should be sent to the sandbox.
-
-```python
-# 2. Prepare the Prompt Template and define code tags
-print("Preparing prompt template and defining code tags...")
-prompt_template = get_prompt('generic/math', 'qwen-instruct')
-prompt_template.config.code_tags = CodeTags(
-    code_begin="<tool_call>\n",
-    code_end="</tool_call>\n",
-)
-```
-
-These parameters control the generation process. Adjusting these values allows you to fine-tune the model's output, for instance, by controlling its creativity or verbosity.
-
-```python
-# 3. Define Sampling Parameters
-sampling_params = {
-    "tokens_to_generate": 8000,
-    "temperature": 0.0,
-    "top_k": 20,
-    "top_p": 0.8,
-    "repetition_penalty": 1.0,
-    "max_code_executions": 2
-}
-print("Sampling parameters defined.")
-```
-
-Now we'll load some example math problems to test our setup. We're using a streaming dataset to efficiently load a small number of problems.
-
-```python
-# 4. Prepare Problems for Inference
-problem = """
-Three airline companies operate flights from Dodola island. Each company has a different schedule of departures. The first company departs every 100 days, the second every 120 days and the third every 150 days. 
-What is the greatest positive integer $d$ for which it is true that there will be $d$ consecutive days without a flight from Dodola island, regardless of the departure times of the various airlines?
-"""
-
-request = copy.deepcopy(sampling_params)
-request["prompts"] = [prompt_template.fill({'problem': problem})]
-print(f"Prepared {len(list_of_problems)} problems for inference.")
-```
-
-This is the final step, where we send our prepared problems to the LLM and print the generated responses.
-
-```python
-# 5. Run Inference and process results
-print("\n--- Starting Inference ---")
-results = stream_generate(
-    llm,
-    **request,
-    **prompt_template.get_code_execution_args(),
-    stop_after_n_seconds=None,
-    stop_after_n_completed=None,
-    stop_after_n_same_answer=None
-)
-
-print(results)
-
-print("\nInference complete. Your efficient math problem-solving engine is working!")
-```
-
-With `stream_generate` we send the problems to the LLM server and perform decoding in parallel.
-
-Observe how the LLM generates responses, potentially including code blocks and their execution outputs, demonstrating its full problem-solving pipeline.
+To turn off tool-calling in the [companion notebook](link) use `get_model` instead of `get_code_execution_model` as shown in the NeMo-Skills [docs](https://nvidia.github.io/NeMo-Skills/). 
