@@ -241,7 +241,7 @@ Here’s a sample of the kind of benchmark results you’ll see:
 |-------------------------------|---------------|-------|-------|
 | Total Generation Time (s)     | 33.8          | 72.9  |  170.4 |
 | Batch Throughput (Tok/sec)          | 2036          | 1029   | 518   |
-| Average Sample Throughput (Tok/s) | 176           | 90    | 44    |
+| Average Sample Throughput (Tok/s) | 175.7           | 89.9    | 44.1    |
 
 *(full benchmarks and code available in the notebook)*  
 
