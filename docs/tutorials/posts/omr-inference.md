@@ -228,7 +228,7 @@ Your TensorRT-LLM engine, now supercharged with ReDrafter, is ready to be served
 
 ## 4\. Benchmarking and results
 
-We’ve prepared a [companion notebook](link) where you can try out the full pipeline yourself. The notebook was run with the same Container Setup and Library Installation as used above, along with 2 H100 gpus for inference. 
+We’ve prepared a [companion notebook](link) where you can try out the full pipeline yourself. The notebook was run with the same container setup and installations as section 1 above, along with 2 H100 gpus for inference. 
 In the notebook, you can:  
 
 - Run inference on different TensorRT-LLM engines (BF16, FP8, FP8+ReDrafter).  
