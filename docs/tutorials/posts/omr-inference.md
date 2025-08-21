@@ -223,12 +223,6 @@ trtllm-build \
     --kv_cache_type paged
 ```
 
-Complete the setup by copying the tokenizer files:
-
-```bash
-cp OpenMath-Nemotron-14B-kaggle/*tok* OpenMath-Nemotron-14B-kaggle-fp8-redrafter-trtllm/
-```
-
 Your TensorRT-LLM engine, now supercharged with ReDrafter, is ready to be served!
 
 -----
